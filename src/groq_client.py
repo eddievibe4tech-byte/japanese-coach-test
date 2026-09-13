@@ -40,35 +40,41 @@ class GroqClient:
         """
         if not self.api_key:
             raise ValueError("Groq API Key 未設定")
+
+        # ✅ 1. 確認 URL 完整無誤 (必須包含 /openai/)
+        url = "https://api.groq.com/openai/v1/chat/completions"
         
+        # ✅ 2. 確認 Header 帶有 "Bearer " (注意有空格)
         headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json'
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
         }
         
         payload = {
-            'model': self.model,
-            'messages': messages,
-            'temperature': temperature,
-            'max_tokens': 1024
+            "model": self.model,  # 例如 "llama-3.3-70b-versatile"
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": 1024,
+            "response_format": {"type": "json_object"}  # 強制輸出 JSON
         }
-        
+
         for attempt in range(self.max_retries):
             try:
-                import requests
-                response = requests.post(self.base_url, json=payload, headers=headers, timeout=30)
+                # ✅ 3. 使用 json=payload 讓 requests 自動處理編碼
+                response = requests.post(url, headers=headers, json=payload, timeout=30)
+                
+                if response.status_code == 404:
+                    # 如果依然 404，印出 URL 來除錯
+                    logger.error(f"Groq 404: 請確認 URL 是否正確 -> {url}")
+                    return None
+                    
                 response.raise_for_status()
                 return response.json()
                 
-            except requests.exceptions.Timeout:
-                print(f"API 請求超時，重試 {attempt + 1}/{self.max_retries}")
-                time.sleep(self.retry_delay * (attempt + 1))
-            except requests.exceptions.RequestException as e:
-                print(f"API 請求失敗：{e}")
-                if attempt == self.max_retries - 1:
-                    return None
-                time.sleep(self.retry_delay * (attempt + 1))
-        
+            except Exception as e:
+                logger.warning(f"Groq 請求失敗 (Attempt {attempt + 1}): {e}")
+                time.sleep(self.retry_delay)
+            
         return None
     
     def _render_template(self, template: str, data: dict) -> str:
