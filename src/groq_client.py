@@ -67,8 +67,9 @@ class GroqClient:
                 response = requests.post(url, headers=headers, json=payload, timeout=30)
                 
                 if response.status_code == 404:
-                    # 如果依然 404，印出 URL 來除錯
-                    logger.error(f"Groq 404: 請確認 URL 是否正確 -> {url}")
+                    # ✅ 關鍵修正：印出 Groq 回傳的具體錯誤訊息與當前使用的模型名稱
+                    logger.error(f"Groq 404 錯誤詳情：{response.text}")
+                    logger.error(f"當前嘗試使用的模型名稱：{self.model}")
                     return None
                     
                 response.raise_for_status()
