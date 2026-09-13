@@ -355,20 +355,43 @@
                     }
                 });
 
-                // 3. 更新預測紀錄表格
+                // 3. 更新預測紀錄表格（🔴 修正：加入錯誤處理與空值檢查）
                 if (telemetryData && telemetryData.records && telemetryData.records.length > 0) {
                     const recentRecords = telemetryData.records.slice(-10).reverse();
                     tableBody.innerHTML = recentRecords.map(record => {
-                        const time = record.timestamp ? new Date(record.timestamp).toLocaleString('zh-TW') : '-';
-                        const accText = record.accuracy === 1 ? '✅ 正確' : (record.accuracy === 0 ? '❌ 錯誤' : '⏳ 待驗證');
-                        const accClass = record.accuracy === 1 ? 'text-green-600 font-bold' : (record.accuracy === 0 ? 'text-red-600 font-bold' : 'text-gray-500');
+                        // 🔴 修正：安全地取得時間戳記
+                        let time = '-';
+                        try {
+                            if (record.timestamp) {
+                                time = new Date(record.timestamp).toLocaleString('zh-TW');
+                            }
+                        } catch (e) {
+                            console.warn('Invalid timestamp:', record.timestamp, e);
+                        }
+                        
+                        // 🔴 修正：安全地取得準確率狀態
+                        let accText = '⏳ 待驗證';
+                        let accClass = 'text-gray-500';
+                        if (record.accuracy === 1) {
+                            accText = '✅ 正確';
+                            accClass = 'text-green-600 font-bold';
+                        } else if (record.accuracy === 0) {
+                            accText = '❌ 錯誤';
+                            accClass = 'text-red-600 font-bold';
+                        }
+                        
+                        // 🔴 修正：安全地取得預測建議
+                        let recommendation = '-';
+                        if (record.prediction && typeof record.prediction === 'object') {
+                            recommendation = record.prediction.recommendation || '-';
+                        }
                         
                         return `
                             <tr>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(time)}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.stock_code)}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.stock_name)}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.prediction?.recommendation || '-')}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.stock_code || '-')}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.stock_name || '-')}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(recommendation)}</td>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm ${accClass}">${accText}</td>
                             </tr>
                         `;
