@@ -203,7 +203,18 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         'price_above_ma20': technicals['price_above_ma20'],
                         'current_price': prices[-1] if prices else None,
                     }
-                    analysis = groq.analyze_stock(prompt_tpl, stock_data) or {}
+                    
+                    # ✅ 加入容錯機制：如果 AI 分析失敗，使用預設值
+                    analysis = groq.analyze_stock(prompt_tpl, stock_data)
+                    if not analysis:
+                        logger.warning(f"{code} AI 分析失敗，使用預設值")
+                        analysis = {
+                            'ev_score': 50,
+                            'recommendation': '觀望',
+                            'reason': f"AI 分析失敗，請手動檢視 {stock['name']} 的技術面與籌碼面數據",
+                            'raw_response': None
+                        }
+                    
                     record = {**stock_data, **analysis,
                               'risk_level': assess_risk_level(stock_data['volatility'])}
                     all_results.append(record)
