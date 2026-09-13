@@ -11,6 +11,7 @@ venv/
 node_modules/
 
 # Logs and temp files
+logs/
 *.log
 *.tmp
 *.swp
