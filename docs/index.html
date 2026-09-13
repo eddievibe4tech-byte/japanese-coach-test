@@ -243,103 +243,12 @@
                     
                     // 儲存數據供排序使用
                     window.analysisData = deep.all_results;
-                    window.telemetryData = telemetryData;
                     
-                    const tableHTML = deep.all_results.map(r => {
-                        const rowId = `detail-${r.code}`;
-                        
-                        // 1. 摘要行 (點擊時觸發 toggleDetail)
-                        const summaryRow = `
-                            <tr onclick="toggleDetail('${rowId}')" class="cursor-pointer hover:bg-blue-50 transition-colors border-b border-gray-100">
-                                <td class="px-4 py-3 text-sm font-medium text-gray-900">
-                                    ${escapeHTML(r.code)} ${escapeHTML(r.name)} 
-                                    <span class="text-xs text-blue-500 ml-1">🔍</span>
-                                </td>
-                                <td class="px-4 py-3 text-sm text-gray-700">$${r.current_price ? r.current_price.toFixed(2) : '-'}</td>
-                                <td class="px-4 py-3 text-sm ${((r.change_5d||0) >= 0) ? 'text-green-600' : 'text-red-600'}">
-                                    ${r.change_5d ? (r.change_5d >= 0 ? '+' : '') + r.change_5d.toFixed(2) + '%' : '-'}
-                                </td>
-                                <td class="px-4 py-3 text-sm text-gray-700">${r.volatility ? r.volatility.toFixed(1) + '%' : '-'}</td>
-                                <td class="px-4 py-3 text-sm font-bold ${(r.ev_score||0) >= 70 ? 'text-green-600' : ((r.ev_score||0) < 40 ? 'text-red-600' : 'text-gray-700')}">
-                                    ${r.ev_score || '-'}
-                                </td>
-                                <td class="px-4 py-3 text-sm">
-                                    <span class="px-2 py-1 rounded-full text-xs font-medium ${
-                                        r.recommendation === '積極買入' ? 'bg-green-100 text-green-800' :
-                                        r.recommendation === '避開' ? 'bg-red-100 text-red-800' :
-                                        'bg-yellow-100 text-yellow-800'
-                                    }">${escapeHTML(r.recommendation) || '-'}</span>
-                                </td>
-                                <td class="px-4 py-3 text-sm">${escapeHTML(r.risk_level) || '-'}</td>
-                                <td class="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title="${escapeHTML(r.reason)}">
-                                    ${escapeHTML(r.reason) ? escapeHTML(r.reason).substring(0, 20) + '...' : '-'}
-                                </td>
-                            </tr>
-                        `;
-                        
-                        // 2. 詳細資訊行 (預設隱藏，點擊摘要行後顯示)
-                        const detailRow = `
-                            <tr id="${rowId}" class="hidden bg-gray-50">
-                                <td colspan="8" class="px-6 py-5 border-b border-gray-200">
-                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        
-                                        <!-- 卡片 1：基本面數據 -->
-                                        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                                            <h4 class="font-bold text-gray-800 mb-3 flex items-center">
-                                                📊 基本面數據
-                                            </h4>
-                                            <ul class="space-y-2 text-sm text-gray-600">
-                                                <li class="flex justify-between"><span>營收年增率：</span><span class="font-medium ${r.revenue_yoy >= 0 ? 'text-green-600' : 'text-red-600'}">${r.revenue_yoy ? r.revenue_yoy.toFixed(2) + '%' : '-'}</span></li>
-                                                <li class="flex justify-between"><span>毛利率：</span><span class="font-medium">${r.gross_margin ? r.gross_margin.toFixed(2) + '%' : '-'}</span></li>
-                                                <li class="flex justify-between"><span>淨利率：</span><span class="font-medium">${r.net_margin ? r.net_margin.toFixed(2) + '%' : '-'}</span></li>
-                                                <li class="flex justify-between"><span>EPS：</span><span class="font-medium">${r.eps ? r.eps.toFixed(2) : '-'}</span></li>
-                                            </ul>
-                                        </div>
-
-                                        <!-- 卡片 2：技術面指標 -->
-                                        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
-                                            <h4 class="font-bold text-gray-800 mb-3 flex items-center">
-                                                📈 技術面指標
-                                            </h4>
-                                            <ul class="space-y-2 text-sm text-gray-600">
-                                                <li class="flex justify-between"><span>MA5 / MA20：</span><span class="font-medium">$${r.ma5 ? r.ma5.toFixed(0) : '-'} / $${r.ma20 ? r.ma20.toFixed(0) : '-'}</span></li>
-                                                <li class="flex justify-between"><span>RSI (14)：</span><span class="font-medium ${r.rsi > 70 ? 'text-red-600' : r.rsi < 30 ? 'text-green-600' : ''}">${r.rsi ? r.rsi.toFixed(2) : '-'}</span></li>
-                                                <li class="flex justify-between"><span>MACD：</span><span class="font-medium ${r.macd > 0 ? 'text-green-600' : 'text-red-600'}">${r.macd ? r.macd.toFixed(2) : '-'}</span></li>
-                                                <li class="flex justify-between"><span>股價位置：</span><span class="font-medium">${r.price_above_ma20 ? 'MA20 之上 🟢' : 'MA20 之下 🔴'}</span></li>
-                                            </ul>
-                                        </div>
-
-                                        <!-- 卡片 3：籌碼面與 AI 完整分析 -->
-                                        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 md:col-span-1">
-                                            <h4 class="font-bold text-gray-800 mb-3 flex items-center">
-                                                 籌碼與 AI 分析
-                                            </h4>
-                                            <div class="space-y-3">
-                                                <div class="text-sm text-gray-600 space-y-1 border-b pb-2">
-                                                    <div class="flex justify-between"><span>投信連買：</span><span class="font-medium">${r.inst_buy_days} 天</span></div>
-                                                    <div class="flex justify-between"><span>融資增減：</span><span class="font-medium ${r.margin_change >= 0 ? 'text-red-600' : 'text-green-600'}">${r.margin_change} 張</span></div>
-                                                </div>
-                                                <div>
-                                                    <p class="text-xs text-gray-500 mb-1">AI 完整理由：</p>
-                                                    <p class="text-sm text-gray-800 leading-relaxed bg-blue-50 p-2 rounded">
-                                                        ${escapeHTML(r.reason) || '暫無詳細分析'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                    </div>
-                                </td>
-                            </tr>
-                        `;
-                        
-                        return summaryRow + detailRow;
-                    }).join('');
+                    // 渲染表格
+                    renderAnalysisTable(deep.all_results);
                     
-                    document.getElementById('analysis-table').innerHTML = tableHTML || '<tr><td colspan="8" class="px-4 py-4 text-center text-gray-500">今日尚無分析結果</td></tr>';
-                    
-                    // 計算準確率統計
-                    calculateAccuracyStats();
+                    // 計算準確率統計（傳入 telemetryRes）
+                    calculateAccuracyStats(telemetryRes);
                 } else {
                     document.getElementById('analysis-table').innerHTML = '<tr><td colspan="8" class="px-4 py-4 text-center text-gray-500">暫無分析數據</td></tr>';
                 }
@@ -474,14 +383,137 @@
             }
         }
 
+        // 渲染分析表格（支援排序和篩選）
+        function renderAnalysisTable(data) {
+            const tableBody = document.getElementById('analysis-table');
+            
+            if (!data || data.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="8" class="px-4 py-4 text-center text-gray-500">無數據</td></tr>';
+                return;
+            }
+
+            tableBody.innerHTML = data.map(r => {
+                const rowId = `detail-${r.code}`;
+                
+                // 摘要行
+                const summaryRow = `
+                    <tr onclick="toggleDetail('${rowId}')" class="hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-100">
+                        <td class="px-4 py-3 text-sm font-medium text-gray-900">
+                            ${escapeHTML(r.code)} ${escapeHTML(r.name)} 
+                            <span class="text-xs text-blue-500 ml-1">🔍</span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-700">$${r.current_price ? r.current_price.toFixed(2) : '-'}</td>
+                        <td class="px-4 py-3 text-sm ${((r.change_5d||0) >= 0) ? 'text-green-600' : 'text-red-600'}">
+                            ${r.change_5d ? (r.change_5d >= 0 ? '+' : '') + r.change_5d.toFixed(2) + '%' : '-'}
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-700">${r.volatility ? r.volatility.toFixed(1) + '%' : '-'}</td>
+                        <td class="px-4 py-3 text-sm font-bold ${(r.ev_score||0) >= 70 ? 'text-green-600' : ((r.ev_score||0) < 40 ? 'text-red-600' : 'text-gray-700')}">
+                            ${r.ev_score || '-'}
+                        </td>
+                        <td class="px-4 py-3 text-sm">
+                            <span class="px-2 py-1 rounded-full text-xs font-medium ${
+                                r.recommendation === '積極買入' ? 'bg-green-100 text-green-800' :
+                                r.recommendation === '避開' ? 'bg-red-100 text-red-800' :
+                                'bg-yellow-100 text-yellow-800'
+                            }">${escapeHTML(r.recommendation) || '-'}</span>
+                        </td>
+                        <td class="px-4 py-3 text-sm">${escapeHTML(r.risk_level) || '-'}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title="${escapeHTML(r.reason)}">
+                            ${escapeHTML(r.reason) ? escapeHTML(r.reason).substring(0, 20) + '...' : '-'}
+                        </td>
+                    </tr>
+                `;
+                
+                // 詳細資訊行
+                const detailRow = `
+                    <tr id="${rowId}" class="hidden bg-gray-50">
+                        <td colspan="8" class="px-6 py-5 border-b border-gray-200">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                
+                                <!-- 卡片 1：基本面數據 -->
+                                <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                                    <h4 class="font-bold text-gray-800 mb-3 flex items-center">
+                                        📊 基本面數據
+                                    </h4>
+                                    <ul class="space-y-2 text-sm text-gray-600">
+                                        <li class="flex justify-between"><span>營收年增率：</span><span class="font-medium ${r.revenue_yoy >= 0 ? 'text-green-600' : 'text-red-600'}">${r.revenue_yoy ? r.revenue_yoy.toFixed(2) + '%' : '-'}</span></li>
+                                        <li class="flex justify-between"><span>毛利率：</span><span class="font-medium">${r.gross_margin ? r.gross_margin.toFixed(2) + '%' : '-'}</span></li>
+                                        <li class="flex justify-between"><span>淨利率：</span><span class="font-medium">${r.net_margin ? r.net_margin.toFixed(2) + '%' : '-'}</span></li>
+                                        <li class="flex justify-between"><span>EPS：</span><span class="font-medium">${r.eps ? r.eps.toFixed(2) : '-'}</span></li>
+                                    </ul>
+                                </div>
+
+                                <!-- 卡片 2：技術面指標 -->
+                                <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+                                    <h4 class="font-bold text-gray-800 mb-3 flex items-center">
+                                        📈 技術面指標
+                                    </h4>
+                                    <ul class="space-y-2 text-sm text-gray-600">
+                                        <li class="flex justify-between"><span>MA5 / MA20：</span><span class="font-medium">$${r.ma5 ? r.ma5.toFixed(0) : '-'} / $${r.ma20 ? r.ma20.toFixed(0) : '-'}</span></li>
+                                        <li class="flex justify-between"><span>RSI (14)：</span><span class="font-medium ${r.rsi > 70 ? 'text-red-600' : r.rsi < 30 ? 'text-green-600' : ''}">${r.rsi ? r.rsi.toFixed(2) : '-'}</span></li>
+                                        <li class="flex justify-between"><span>MACD：</span><span class="font-medium ${r.macd > 0 ? 'text-green-600' : 'text-red-600'}">${r.macd ? r.macd.toFixed(2) : '-'}</span></li>
+                                        <li class="flex justify-between"><span>股價位置：</span><span class="font-medium">${r.price_above_ma20 ? 'MA20 之上 🟢' : 'MA20 之下 🔴'}</span></li>
+                                    </ul>
+                                </div>
+
+                                <!-- 卡片 3：籌碼面與 AI 完整分析 -->
+                                <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 md:col-span-1">
+                                    <h4 class="font-bold text-gray-800 mb-3 flex items-center">
+                                         籌碼與 AI 分析
+                                    </h4>
+                                    <div class="space-y-3">
+                                        <div class="text-sm text-gray-600 space-y-1 border-b pb-2">
+                                            <div class="flex justify-between"><span>投信連買：</span><span class="font-medium">${r.inst_buy_days} 天</span></div>
+                                            <div class="flex justify-between"><span>融資增減：</span><span class="font-medium ${r.margin_change >= 0 ? 'text-red-600' : 'text-green-600'}">${r.margin_change} 張</span></div>
+                                        </div>
+                                        <div>
+                                            <p class="text-xs text-gray-500 mb-1">AI 完整理由：</p>
+                                            <p class="text-sm text-gray-800 leading-relaxed bg-blue-50 p-2 rounded">
+                                                ${escapeHTML(r.reason) || '暫無詳細分析'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                
+                return summaryRow + detailRow;
+            }).join('');
+        }
+
+        // 計算準確率統計（接收 telemetryRes 參數）
+        function calculateAccuracyStats(telemetryRes) {
+            if (telemetryRes.status !== 'fulfilled' || !telemetryRes.value.ok) {
+                console.warn('Telemetry 數據載入失敗');
+                return;
+            }
+            
+            telemetryRes.value.json().then(telemetryData => {
+                const records = telemetryData.records || [];
+                const verified = records.filter(r => r.accuracy !== null);
+                const pending = records.filter(r => r.accuracy === null);
+                
+                const correct = verified.filter(r => r.accuracy === 1).length;
+                const incorrect = verified.filter(r => r.accuracy === 0).length;
+                const accuracy = verified.length > 0 ? ((correct / verified.length) * 100).toFixed(1) : '0.0';
+                
+                document.getElementById('correct-count').innerText = correct;
+                document.getElementById('incorrect-count').innerText = incorrect;
+                document.getElementById('pending-count').innerText = pending.length;
+                document.getElementById('avg-accuracy').innerText = accuracy + '%';
+            }).catch(() => {});
+        }
+
         // 切換詳細資訊行的顯示/隱藏
         function toggleDetail(rowId) {
             const detailRow = document.getElementById(rowId);
             if (detailRow) {
-                // 使用 Tailwind 的 hidden 類別來切換
                 detailRow.classList.toggle('hidden');
                 
-                // 可選：改變摘要行的背景色作為視覺回饋
+                // 改變摘要行的背景色作為視覺回饋
                 const summaryRow = detailRow.previousElementSibling;
                 if (summaryRow) {
                     if (detailRow.classList.contains('hidden')) {
@@ -493,44 +525,25 @@
             }
         }
 
-        // 計算準確率統計
-        function calculateAccuracyStats() {
-            const records = window.telemetryData?.records || [];
-            const verified = records.filter(r => r.accuracy !== null);
-            const pending = records.filter(r => r.accuracy === null);
-            
-            const correct = verified.filter(r => r.accuracy === 1).length;
-            const incorrect = verified.filter(r => r.accuracy === 0).length;
-            const accuracy = verified.length > 0 ? ((correct / verified.length) * 100).toFixed(1) : 0;
-            
-            document.getElementById('correct-count').innerText = correct;
-            document.getElementById('incorrect-count').innerText = incorrect;
-            document.getElementById('pending-count').innerText = pending.length;
-            document.getElementById('avg-accuracy').innerText = accuracy + '%';
-        }
-
         // 排序功能
         function sortTable() {
             const sortBy = document.getElementById('sort-by').value;
             if (!window.analysisData) return;
             
-            const sorted = [...window.analysisData].sort((a, b) => {
-                if (sortBy === 'ev_score') return (b.ev_score || 0) - (a.ev_score || 0);
-                if (sortBy === 'rsi') return (a.rsi || 0) - (b.rsi || 0);
-                if (sortBy === 'change_5d') return (b.change_5d || 0) - (a.change_5d || 0);
-                if (sortBy === 'volatility') return (b.volatility || 0) - (a.volatility || 0);
-                return 0;
-            });
+            let sorted = [...window.analysisData];
             
-            // 重新渲染（保持排序後的數據）
-            window.analysisData = sorted;
-            // 簡單處理：重新呼叫 loadDashboard 會重置排序，所以這裡直接更新 DOM
-            const tbody = document.getElementById('analysis-table');
-            tbody.innerHTML = sorted.map(r => {
-                // 使用與上面相同的渲染邏輯（為簡化代碼，此處省略重複部分）
-                // 實際應用中應該提取為獨立函數
-                return `<tr class="hover:bg-gray-50"><td colspan="10" class="px-3 py-3 text-sm">${escapeHTML(r.code)} ${escapeHTML(r.name)} - EV: ${r.ev_score || '-'}</td></tr>`;
-            }).join('');
+            if (sortBy === 'ev_score') {
+                sorted.sort((a, b) => (b.ev_score || 0) - (a.ev_score || 0));
+            } else if (sortBy === 'rsi') {
+                sorted.sort((a, b) => (a.rsi || 0) - (b.rsi || 0));
+            } else if (sortBy === 'change_5d') {
+                sorted.sort((a, b) => (b.change_5d || 0) - (a.change_5d || 0));
+            } else if (sortBy === 'volatility') {
+                sorted.sort((a, b) => (b.volatility || 0) - (a.volatility || 0));
+            }
+            
+            // 重新渲染
+            renderAnalysisTable(sorted);
         }
 
         // 篩選功能
@@ -538,16 +551,14 @@
             const filter = document.getElementById('filter-recommendation').value;
             if (!window.analysisData) return;
             
-            const filtered = filter ? 
-                window.analysisData.filter(r => r.recommendation === filter) : 
-                window.analysisData;
+            let filtered = window.analysisData;
             
-            // 重新渲染（保持篩選後的數據）
-            const tbody = document.getElementById('analysis-table');
-            tbody.innerHTML = filtered.map(r => {
-                // 使用與上面相同的渲染邏輯
-                return `<tr class="hover:bg-gray-50"><td colspan="10" class="px-3 py-3 text-sm">${escapeHTML(r.code)} ${escapeHTML(r.name)} - ${escapeHTML(r.recommendation) || '-'}</td></tr>`;
-            }).join('');
+            if (filter && filter !== '') {
+                filtered = window.analysisData.filter(r => r.recommendation === filter);
+            }
+            
+            // 重新渲染
+            renderAnalysisTable(filtered);
         }
 
         // 頁面載入完成後執行
