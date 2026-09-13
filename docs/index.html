@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 狙擊手系統 Dashboard</title>
+    <!-- 建議未來改用編譯好的 CSS 檔案，目前保留 Play CDN 方便開發 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* 簡單的 Loading 動畫 */
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+    <div class="max-w-4xl mx-auto bg-white shadow-lg rounded-xl p-6">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-800">🎯 狙擊手系統 - 績效儀表板</h1>
+                <p class="text-gray-500 text-sm" id="last-updated">最後更新時間：載入中...</p>
+            </div>
+            <button onclick="loadDashboard()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center">
+                🔄 重新整理
+            </button>
+        </div>
+
+        <!-- 數據卡片區 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <p class="text-sm text-blue-600">當前準確率</p>
+                <p class="text-3xl font-bold text-blue-800" id="accuracy">-</p>
+            </div>
+            <div class="bg-green-50 p-4 rounded-lg border border-green-200">
+                <p class="text-sm text-green-600">總預測次數</p>
+                <p class="text-3xl font-bold text-green-800" id="total-preds">-</p>
+            </div>
+            <div class="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                <p class="text-sm text-purple-600">當前 Prompt 版本</p>
+                <p class="text-3xl font-bold text-purple-800" id="prompt-version">-</p>
+            </div>
+        </div>
+
+        <!-- 圖表區 -->
+        <div class="bg-white border rounded-lg p-4 mb-6">
+            <h2 class="text-xl font-semibold mb-4">📈 準確率趨勢</h2>
+            <div style="height: 300px;">
+                <canvas id="accuracyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- 近期預測紀錄表格 -->
+        <div class="bg-white border rounded-lg p-4">
+            <h2 class="text-xl font-semibold mb-4">📋 近期預測紀錄</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">時間</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">股票代碼</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">股票名稱</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">預測</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">結果</th>
+                        </tr>
+                    </thead>
+                    <tbody id="predictions-table" class="bg-white divide-y divide-gray-200">
+                        <tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">載入中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // GitHub Repository 設定
+        const REPO_USER = 'eddievibe4tech-byte'; 
+        const REPO_NAME = 'sniper-system-test';
+        const METRICS_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/performance_metrics.json`;
+        const TELEMETRY_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/telemetry.json`;
+
+        // ⚠️ 關鍵修正：將 Chart 實例存為變數，避免重複初始化報錯
+        let accuracyChartInstance = null;
+
+        // 簡單的 XSS 防護函數
+        function escapeHTML(str) {
+            if (!str) return '-';
+            return str.toString().replace(/[&<>"']/g, function(m) {
+                return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m];
+            });
+        }
+
+        async function loadDashboard() {
+            const tableBody = document.getElementById('predictions-table');
+            tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center"><div class="loading-spinner"></div> 載入數據中...</td></tr>';
+
+            try {
+                // 並行載入兩個 JSON 以提升速度
+                const [metricsRes, telemetryRes] = await Promise.allSettled([
+                    fetch(METRICS_URL),
+                    fetch(TELEMETRY_URL)
+                ]);
+
+                // 處理 Metrics 數據
+                let metricsData = null;
+                if (metricsRes.status === 'fulfilled' && metricsRes.value.ok) {
+                    metricsData = await metricsRes.value.json();
+                }
+
+                // 處理 Telemetry 數據
+                let telemetryData = null;
+                if (telemetryRes.status === 'fulfilled' && telemetryRes.value.ok) {
+                    telemetryData = await telemetryRes.value.json();
+                }
+
+                // 1. 更新卡片數據
+                if (metricsData) {
+                    document.getElementById('accuracy').innerText = (metricsData.accuracy_rate || 0).toFixed(1) + '%';
+                    document.getElementById('total-preds').innerText = metricsData.total_predictions || 0;
+                    document.getElementById('prompt-version').innerText = 'V' + (metricsData.current_version || 1);
+                    
+                    const updateTime = metricsData.last_updated ? new Date(metricsData.last_updated).toLocaleString('zh-TW') : '未知';
+                    document.getElementById('last-updated').innerText = `最後更新時間：${updateTime}`;
+                } else {
+                    document.getElementById('last-updated').innerText = '最後更新時間：暫無數據 (檔案可能尚未生成)';
+                }
+
+                // 2. 繪製圖表 (⚠️ 修正：相容 Object 結構的 version_stats)
+                const ctx = document.getElementById('accuracyChart').getContext('2d');
+                let labels = [];
+                let accuracyData = [];
+                
+                // 檢查 version_stats 是否存在
+                if (metricsData && metricsData.version_stats) {
+                    // 判斷是 Array 還是 Object
+                    if (Array.isArray(metricsData.version_stats)) {
+                        metricsData.version_stats.forEach(stat => {
+                            labels.push('V' + stat.version);
+                            accuracyData.push(stat.accuracy || 0);
+                        });
+                    } else {
+                        // 如果是 Object (e.g., {"1": {...}, "2": {...}})
+                        Object.entries(metricsData.version_stats).forEach(([version, stats]) => {
+                            labels.push('V' + version);
+                            // 假設 stats 物件中有 accuracy 欄位，若無則計算
+                            const acc = stats.accuracy || (stats.correct / stats.predictions * 100) || 0;
+                            accuracyData.push(acc);
+                        });
+                    }
+                }
+
+                // 如果完全沒數據，使用模擬數據
+                if (labels.length === 0) {
+                    labels = ['V1 (模擬)'];
+                    accuracyData = [50];
+                }
+
+                // 銷毀舊圖表避免衝突
+                if (accuracyChartInstance) {
+                    accuracyChartInstance.destroy();
+                }
+
+                accuracyChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '準確率 (%)',
+                            data: accuracyData,
+                            borderColor: 'rgb(59, 130, 246)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                max: 100,
+                                ticks: { callback: (val) => val + '%' }
+                            }
+                        }
+                    }
+                });
+
+                // 3. 更新預測紀錄表格
+                if (telemetryData && telemetryData.records && telemetryData.records.length > 0) {
+                    const recentRecords = telemetryData.records.slice(-10).reverse();
+                    tableBody.innerHTML = recentRecords.map(record => {
+                        const time = record.timestamp ? new Date(record.timestamp).toLocaleString('zh-TW') : '-';
+                        const accText = record.accuracy === 1 ? '✅ 正確' : (record.accuracy === 0 ? '❌ 錯誤' : '⏳ 待驗證');
+                        const accClass = record.accuracy === 1 ? 'text-green-600 font-bold' : (record.accuracy === 0 ? 'text-red-600 font-bold' : 'text-gray-500');
+                        
+                        return `
+                            <tr>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(time)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.stock_code)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.stock_name)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.prediction?.recommendation || '-')}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm ${accClass}">${accText}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">暫無預測紀錄</td></tr>';
+                }
+
+            } catch (error) {
+                console.error("Dashboard Error:", error);
+                tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center text-red-500">載入失敗，請檢查網路或 Repo 權限</td></tr>';
+            }
+        }
+
+        // 頁面載入完成後執行
+        document.addEventListener('DOMContentLoaded', loadDashboard);
+    </script>
+</body>
+</html>
