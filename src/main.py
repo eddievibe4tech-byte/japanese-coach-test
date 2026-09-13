@@ -19,6 +19,74 @@ from src.groq_client import GroqClient
 from src.risk_calculator import calculate_volatility, assess_risk_level
 from src.yahoo_client import YahooFinanceClient
 
+
+def auto_verify_predictions(telemetry_data: Dict, finmind: FinMindClient, horizon: int = 5) -> int:
+    """
+    🔴 P0 修正：自動回填驗證
+    
+    自動回填：預測滿 horizon 個交易日後，
+    用「預測當日收盤價 vs 現在價」計算實際報酬與對錯。
+    
+    Args:
+        telemetry_data: 遙測數據字典
+        finmind: FinMind 客戶端
+        horizon: 驗證天數（預設 5 交易日）
+        
+    Returns:
+        已驗證的記錄數量
+    """
+    from datetime import datetime
+    now = datetime.now(TZ_TAIPEI)
+    verified = 0
+
+    for rec in telemetry_data.get("records", []):
+        # 跳過已驗證的記錄
+        if rec.get("actual_result"):
+            continue
+        
+        entry_price = rec.get("entry_price")
+        if not entry_price:
+            continue
+
+        pred_dt = datetime.fromisoformat(rec["timestamp"].replace('+08:00', '+08:00'))
+        # 簡化：用日曆日 * 1.5 近似交易日
+        days_elapsed = (now - pred_dt).days
+        if days_elapsed < int(horizon * 1.5):
+            continue
+
+        # 取得當前價格
+        try:
+            prices = finmind.get_stock_price(rec["stock_code"], days=1)
+            if not prices:
+                continue
+            current = prices[-1]
+        except Exception:
+            continue
+
+        # 計算報酬率
+        ret = round((current - entry_price) / entry_price * 100, 2)
+        rec_pred = rec.get("prediction", {}).get("recommendation", "")
+
+        # 判斷對錯
+        if rec_pred in ("積極買入", "謹慎買入"):
+            correct = ret > 0
+        elif rec_pred == "避開":
+            correct = ret <= 0  # 避開後真的沒漲＝正確
+        else:  # 回檔觀察/觀望
+            correct = abs(ret) < 3
+
+        rec["actual_result"] = {
+            "profit_pct": ret,
+            "was_correct": correct,
+            "horizon_days": horizon,
+            "auto": True,
+            "verified_at": now.isoformat()
+        }
+        rec["accuracy"] = 1 if correct else 0
+        verified += 1
+
+    return verified
+
 # 載入環境變數
 load_dotenv()
 
@@ -88,10 +156,17 @@ def update_performance_metrics(telemetry_data: Optional[Dict] = None):
     
     # 計算已驗證的準確率
     verified_records = [r for r in records if r.get('accuracy') is not None]
-    accuracy_rate = 0.0
-    if verified_records:
+    verified_count = len(verified_records)
+    
+    # 🟡 P0 修正：驗證數 < 10 時顯示「資料不足」，不顯示 0.0%
+    accuracy_rate = None
+    accuracy_display = "資料不足"
+    if verified_count >= 10:
         correct_count = sum(1 for r in verified_records if r.get('accuracy') == 1)
-        accuracy_rate = (correct_count / len(verified_records)) * 100
+        accuracy_rate = (correct_count / verified_count) * 100
+        accuracy_display = round(accuracy_rate, 1)
+    elif verified_count > 0:
+        accuracy_display = f"已驗證 {verified_count}/{total_predictions}"
     
     # 計算各版本統計
     version_stats: Dict[str, Dict] = {}
@@ -106,20 +181,24 @@ def update_performance_metrics(telemetry_data: Optional[Dict] = None):
     # 計算各版本準確率
     version_stats_list = []
     for version, stats in version_stats.items():
-        stats['accuracy'] = round((stats['correct'] / stats['predictions']) * 100, 1) if stats['predictions'] > 0 else 0.0
+        if stats['predictions'] > 0:
+            stats['accuracy'] = round((stats['correct'] / stats['predictions']) * 100, 1)
+        else:
+            stats['accuracy'] = None
         version_stats_list.append(stats)
     
     now = datetime.now(TZ_TAIPEI)
     metrics = {
         'total_predictions': total_predictions,
-        'accuracy_rate': round(accuracy_rate, 1),
+        'verified_count': verified_count,
+        'accuracy_rate': accuracy_display,
         'current_version': max(int(v) for v in version_stats.keys()) if version_stats else 1,
         'last_updated': now.isoformat(),
         'version_stats': version_stats_list
     }
     
     path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding='utf-8')
-    logger.info(f"績效指標已更新：總預測={total_predictions}, 準確率={accuracy_rate:.1f}%")
+    logger.info(f"績效指標已更新：總預測={total_predictions}, 已驗證={verified_count}, 準確率={accuracy_display}")
 
 
 def run_daily_analysis(mode: str = 'full') -> Dict:
@@ -133,6 +212,18 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
         分析結果字典
     """
     logger.info(f"開始執行每日分析，模式：{mode}")
+    
+    # 🔴 P0 修正：執行分析前先自動回填驗證
+    telemetry_path = DATA_DIR / 'telemetry.json'
+    if telemetry_path.exists():
+        telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
+        finmind = FinMindClient()
+        verified_count = auto_verify_predictions(telemetry_data, finmind)
+        if verified_count > 0:
+            telemetry_path.write_text(json.dumps(telemetry_data, ensure_ascii=False, indent=2), encoding='utf-8')
+            logger.info(f"自動驗證完成：已更新 {verified_count} 筆預測")
+            # 更新績效指標
+            update_performance_metrics(telemetry_data)
     
     # 使用台灣時間
     now = datetime.now(TZ_TAIPEI)
@@ -293,6 +384,8 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         'prediction': analysis,
                         'actual_result': None,
                         'accuracy': None,
+                        # 🔴 P0 修正：記錄 entry_price 供自動驗證使用
+                        'entry_price': prices[-1] if prices else None,
                     })
                     logger.info(f"{code} 分析完成：EV={analysis.get('ev_score')}")
                     
