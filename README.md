@@ -200,9 +200,39 @@ FinMind API ──→ Python 分析引擎 ──→ Groq AI 分析 ──→ JSO
 
 | 模型 | 平台 | 用途 | 選擇理由 |
 |---|---|---|---|
-| **Llama 3.3 70B** | Groq | 主力分析、深度推理 | 免費、速度快、邏輯強、免綁卡 |
+| **Llama 3.3 70B** | Groq | 主力分析、深度推理、Prompt 優化 | 免費、速度快、邏輯強、免綁卡 |
 | **Qwen 2.5 72B**（備選） | 阿里雲百煉 / OpenRouter | 深度推理（中文更強） | 需額外申請，可後續切換 |
 | **Mixtral 8x7B**（不建議） | Groq | - | 中文金融推理能力不足 |
+
+#### Groq 模型選擇建議（針對 Prompt 優化）
+
+由於本系統目前僅使用 Groq API 進行 Prompt 自動優化，以下是針對不同任務的模型選擇與參數設定建議：
+
+**首選模型：`llama-3.3-70b-versatile`**
+- **為什麼？** Prompt 優化需要高階推理 (Meta-Reasoning) 與指令遵循 (Instruction Following) 能力。Llama 3.3 70B 具備極強的邏輯分析與長文本指令遵循能力，是目前開源模型中最適合做 Meta-Prompting 的選擇。
+- **備選 (若 Context 極大)**：`mixtral-8x7b-32768`。如果需要丟入大量失敗預測 Log (可能超過 10k tokens)，Mixtral 的 32k Context Window 會有優勢，但 70B 的優化品質通常更好。
+
+**推薦 API 參數設定：**
+```python
+response = client.chat.completions.create(
+    model="llama-3.3-70b-versatile",
+    messages=[
+        {"role": "system", "content": OPTIMIZER_SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt_with_error_logs}
+    ],
+    temperature=0.6,        # 0.5~0.7 最適合重寫 Prompt
+    top_p=0.9,
+    max_tokens=4096,        # 確保有足夠空間輸出完整的 Prompt 模板
+    response_format={"type": "json_object"}  # 強制輸出 JSON，方便程式解析
+)
+```
+
+**Meta-Prompt 設計要點：**
+- 讓 AI 扮演「Prompt Engineer」角色
+- 分析舊 Prompt 導致預測錯誤的原因
+- 在【台股邏輯範例】中補充防呆規則
+- 保持核心結構與 JSON 輸出格式不變
+- 強制輸出 JSON 格式以便程式解析
 
 ### 前端技術
 
