@@ -356,41 +356,69 @@
                 });
 
                 // 3. 更新預測紀錄表格（🔴 修正：加入錯誤處理與空值檢查）
-                if (telemetryData && telemetryData.records && telemetryData.records.length > 0) {
-                    const recentRecords = telemetryData.records.slice(-10).reverse();
+                let recordsArray = [];
+                if (telemetryData) {
+                    // 支援多種結構：records 可能是陣列或物件
+                    if (Array.isArray(telemetryData.records)) {
+                        recordsArray = telemetryData.records;
+                    } else if (telemetryData.records && Array.isArray(telemetryData.records.records)) {
+                        // 相容嵌套結構 { records: { records: [...] } }
+                        recordsArray = telemetryData.records.records;
+                    }
+                }
+                
+                if (recordsArray && recordsArray.length > 0) {
+                    const recentRecords = recordsArray.slice(-10).reverse();
                     tableBody.innerHTML = recentRecords.map(record => {
                         // 🔴 修正：安全地取得時間戳記
                         let time = '-';
                         try {
-                            if (record.timestamp) {
+                            if (record && record.timestamp) {
                                 time = new Date(record.timestamp).toLocaleString('zh-TW');
                             }
                         } catch (e) {
-                            console.warn('Invalid timestamp:', record.timestamp, e);
+                            console.warn('Invalid timestamp:', record ? record.timestamp : 'record is null', e);
                         }
                         
                         // 🔴 修正：安全地取得準確率狀態
                         let accText = '⏳ 待驗證';
                         let accClass = 'text-gray-500';
-                        if (record.accuracy === 1 || record.accuracy === 80 || record.accuracy === 100) {
+                        const accuracy = record ? (record.accuracy || record.actual_result?.was_correct) : null;
+                        if (accuracy === 1 || accuracy === 80 || accuracy === 100 || (record?.actual_result?.was_correct === true)) {
                             accText = '✅ 正確';
                             accClass = 'text-green-600 font-bold';
-                        } else if (record.accuracy === 0 || record.accuracy === 20) {
+                        } else if (accuracy === 0 || accuracy === 20 || (record?.actual_result?.was_correct === false)) {
                             accText = '❌ 錯誤';
                             accClass = 'text-red-600 font-bold';
                         }
                         
-                        // 🔴 修正：安全地取得預測建議
+                        // 🔴 修正：安全地取得預測建議（支援多種結構）
                         let recommendation = '-';
-                        if (record.prediction && typeof record.prediction === 'object') {
-                            recommendation = record.prediction.recommendation || '-';
+                        if (record && record.prediction && typeof record.prediction === 'object') {
+                            recommendation = record.prediction.recommendation || 
+                                           record.prediction.operation_suggestion || 
+                                           '-';
+                        } else if (record && record.operation_suggestion) {
+                            recommendation = record.operation_suggestion;
+                        }
+                        
+                        // 🔴 修正：安全地取得股票代碼和名稱（從 prediction 或 input 中讀取）
+                        let stockCode = record?.stock_code || '-';
+                        let stockName = record?.stock_name || '-';
+                        if ((stockCode === '-' || !stockCode) && record?.prediction) {
+                            stockCode = record.prediction.stock_code || record.prediction.code || '-';
+                            stockName = record.prediction.stock_name || record.prediction.name || '-';
+                        }
+                        if ((stockCode === '-' || !stockCode) && record?.input) {
+                            stockCode = record.input.code || '-';
+                            stockName = record.input.name || '-';
                         }
                         
                         return `
                             <tr>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(time)}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.stock_code || '-')}</td>
-                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.stock_name || '-')}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(stockCode)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(stockName)}</td>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(recommendation)}</td>
                                 <td class="px-4 py-3 whitespace-nowrap text-sm ${accClass}">${accText}</td>
                             </tr>

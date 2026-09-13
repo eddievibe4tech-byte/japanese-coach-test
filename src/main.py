@@ -332,8 +332,19 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                     
                     # ✅ 4. 若使用 FinMind 成功，且尚未計算 change_5d 與 volatility，則在此計算
                     if not use_yahoo_fallback:
-                        change_5d = round((prices[-1] / prices[-6] - 1) * 100, 2) if (len(prices) >= 6 and prices[-6] != 0) else 0.0
-                        volatility = calculate_volatility(prices)
+                        # 🔴 修正：確保有足夠的價格數據才計算
+                        if len(prices) >= 6 and prices[-6] and prices[-6] > 0:
+                            change_5d = round((prices[-1] / prices[-6] - 1) * 100, 2)
+                        else:
+                            # 數據不足時嘗試用更少天數計算
+                            if len(prices) >= 2 and prices[-1] and prices[0] and prices[0] > 0:
+                                days_available = len(prices) - 1
+                                change_5d = round((prices[-1] / prices[0] - 1) * 100, 2) if days_available > 0 else 0.0
+                                logger.warning(f"{code}: 價格數據不足 6 天，改用 {days_available} 天計算 5 日漲幅")
+                            else:
+                                change_5d = 0.0
+                                logger.warning(f"{code}: 價格數據不足以計算漲幅")
+                        volatility = calculate_volatility(prices) if len(prices) >= 2 else 0.0
 
                     # ✅ 5. 組裝最終的 stock_data（加入 data_source 標記）
                     stock_data = {
