@@ -187,6 +187,7 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         'change_5d': change_5d,
                         'volatility': calculate_volatility(prices),
                         'ex_div_days': '-',
+                        'current_price': prices[-1] if prices else None,
                     }
                     analysis = groq.analyze_stock(prompt_tpl, stock_data) or {}
                     record = {**stock_data, **analysis,
