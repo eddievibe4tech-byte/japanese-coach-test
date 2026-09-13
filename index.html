@@ -794,9 +794,6 @@
             }).join('');
         }
 
-        // 頁面載入完成後執行
-        document.addEventListener('DOMContentLoaded', loadDashboard);
-        
         // 🟡 P2 修正：新增載入 Screener 候選股表格的函數
         async function loadScreener() {
             try {
@@ -840,12 +837,15 @@
             }
         }
         
-        // 在 Dashboard 載入時同時載入 Screener 資料
-        const originalLoadDashboard = loadDashboard;
-        loadDashboard = async function() {
-            await originalLoadDashboard();
+        // 🟠 P1 修正：使用安全的事件監聽器綁定，避免覆寫常數變數
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 1. 執行原本的 Dashboard 載入 (如果存在的話)
+            if (typeof loadDashboard === 'function') {
+                await loadDashboard();
+            }
+            // 2. 載入 Screener 資料
             await loadScreener();
-        };
+        });
     </script>
 </body>
 </html>

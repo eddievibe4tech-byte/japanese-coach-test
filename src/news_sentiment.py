@@ -206,17 +206,14 @@ def save_ai_dd_reports(reports: list) -> None:
 
 
 if __name__ == "__main__":
-    # 測試執行
-    print("🧪 測試 AI 盡調功能...")
+    import sys
     
-    # 測試單一股票
-    test_stock = {"code": "2330", "name": "台積電"}
-    report = ai_due_diligence(
-        stock_code=test_stock["code"],
-        stock_name=test_stock["name"]
-    )
+    # 如果是從 GitHub Actions 或命令列直接執行，則執行批次 AI 盡調
+    print("🤖 啟動 AI 盡調批次處理...")
+    reports = run_ai_dd_on_candidates()
     
-    print(f"\n✅ {test_stock['name']} 盡調結果:")
-    print(f"  情緒：{report['sentiment']}")
-    print(f"  風險：{report['risk_factor']}")
-    print(f"  結論：{report['conclusion']}")
+    if not reports:
+        print("⚠️ 沒有產出任何 AI 盡調報告")
+        sys.exit(1) # 讓 Workflow 知道失敗
+        
+    print(f"\n✅ 成功產出 {len(reports)} 份 AI 盡調報告")

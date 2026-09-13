@@ -31,9 +31,10 @@ def get_all_taiwan_stocks(finmind: FinMindClient) -> List[Dict]:
     """
     # 使用 FinMind 的 TaiwanStockInfo API (修正：TaiwanStockInfoWithWarrant 不存在)
     try:
-        data = finmind._make_request('TaiwanStockInfo', 'ALL', days=1) or []
+        # 移除 days=1，改用標準呼叫
+        data = finmind._make_request('TaiwanStockInfo', '') or []
     except Exception as e:
-        print(f"⚠️ 獲取股票清單失敗：{e}，使用預設清單")
+        print(f"⚠️ 獲取股票清單失敗：{e}")
         data = []
     
     stocks = []
@@ -50,6 +51,14 @@ def get_all_taiwan_stocks(finmind: FinMindClient) -> List[Dict]:
                 'industry': industry
             })
     
+    # 🟡 P2 優化：如果 API 失敗或回傳空，使用預設的 Top 50 活躍股清單確保系統能跑
+    if not stocks:
+        print("⚠️ API 無回傳，使用預設活躍股清單進行海選...")
+        fallback_codes = ["2330", "2317", "2382", "2308", "2454", "2881", "2882", "3711", "3017", "1504", 
+                          "1519", "2303", "2412", "2002", "2884", "2885", "2886", "2890", "2891", "2892"]
+        # 這裡可以簡單回傳代號，名稱留空或後續再補
+        stocks = [{'stock_id': code, 'stock_name': code, 'industry': '預設'} for code in fallback_codes]
+        
     print(f"✅ 載入 {len(stocks)} 檔台股")
     return stocks
 
