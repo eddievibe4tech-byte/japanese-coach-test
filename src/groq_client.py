@@ -71,6 +71,13 @@ class GroqClient:
         
         return None
     
+    def _render_template(self, template: str, data: dict) -> str:
+        """逐鍵替換佔位符，避免模板中的 JSON 範例大括號被 format() 誤判"""
+        rendered = template
+        for key, value in data.items():
+            rendered = rendered.replace('{' + key + '}', str(value))
+        return rendered
+    
     def analyze_stock(self, prompt_template: str, stock_data: Dict) -> Optional[Dict]:
         """
         分析股票並返回評分與建議
@@ -82,8 +89,8 @@ class GroqClient:
         Returns:
             包含 EV 評分、建議、原因的字典
         """
-        # 渲染 Prompt 模板
-        prompt = prompt_template.format(**stock_data)
+        # 渲染 Prompt 模板（使用安全替換）
+        prompt = self._render_template(prompt_template, stock_data)
         
         messages = [
             {
@@ -156,7 +163,8 @@ class GroqClient:
         
         # 格式化市場數據為字串
         market_str = "; ".join([f"{k}: {v}" for k, v in market_data.items()])
-        prompt = prompt_template.replace("{market_data}", market_str)
+        # 使用安全替換避免 JSON 範例大括號被誤判
+        prompt = self._render_template(prompt_template, {'market_data': market_str})
         
         messages = [
             {

@@ -3,9 +3,12 @@ FinMind API 客戶端模組
 提供台股數據抓取功能：營收、投信籌碼、融資餘額等
 """
 import os
+import logging
 import requests
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 
 
 class FinMindClient:
@@ -26,13 +29,14 @@ class FinMindClient:
             'Content-Type': 'application/json'
         })
     
-    def _make_request(self, dataset: str, params: Dict) -> Optional[List[Dict]]:
+    def _make_request(self, dataset: str, stock_id: str, days: int = 60) -> Optional[List[Dict]]:
         """
         發送 API 請求
         
         Args:
             dataset: 數據集名稱
-            params: 其他請求參數（包含 stock_id, start_date, end_date 等）
+            stock_id: 股票代號（v4 用 data_id）
+            days: 日期範圍天數
             
         Returns:
             API 回應資料（data 陣列），失敗時返回 None
@@ -40,10 +44,15 @@ class FinMindClient:
         if not self.token:
             raise ValueError("FinMind Token 未設定")
         
+        end = datetime.now()
+        start = end - timedelta(days=days)
+        
         request_params = {
             'dataset': dataset,
+            'data_id': stock_id,
+            'start_date': start.strftime('%Y-%m-%d'),
+            'end_date': end.strftime('%Y-%m-%d'),
             'token': self.token,
-            **params
         }
         
         try:
@@ -55,14 +64,14 @@ class FinMindClient:
                 # FinMind 回傳的 data 直接是陣列
                 return data.get('data', [])
             else:
-                print(f"API 錯誤：{data.get('msg', 'Unknown error')}")
+                logger.error(f"FinMind {dataset} 失敗：{data.get('status')} {data.get('msg', 'Unknown error')}")
                 return None
                 
         except requests.exceptions.Timeout:
             print("API 請求超時")
             return None
         except requests.exceptions.RequestException as e:
-            print(f"API 請求失敗：{e}")
+            logger.error(f"FinMind {dataset} 請求失敗：{e}")
             return None
     
     def get_revenue(self, stock_id: str, months: int = 3) -> Optional[Dict]:
@@ -76,13 +85,7 @@ class FinMindClient:
         Returns:
             包含最新月營收年增率的字典
         """
-        params = {
-            'stock_id': stock_id,
-            'start_date': (datetime.now() - timedelta(days=months*30)).strftime('%Y-%m-%d'),
-            'end_date': datetime.now().strftime('%Y-%m-%d')
-        }
-        
-        data = self._make_request('TaiwanStockRevenue', params)
+        data = self._make_request('TaiwanStockMonthRevenue', stock_id, days=months*30) or []
         
         if not data:
             return None
@@ -124,13 +127,7 @@ class FinMindClient:
         Returns:
             連續買超天數
         """
-        params = {
-            'stock_id': stock_id,
-            'start_date': (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d'),
-            'end_date': datetime.now().strftime('%Y-%m-%d')
-        }
-        
-        data = self._make_request('TaiwanStockInstitutionalInvestorsBuySell', params)
+        data = self._make_request('TaiwanStockInstitutionalInvestorsBuySell', stock_id, days=days) or []
         
         if not data:
             return 0
@@ -166,13 +163,7 @@ class FinMindClient:
         Returns:
             近幾日融資增減張數
         """
-        params = {
-            'stock_id': stock_id,
-            'start_date': (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d'),
-            'end_date': datetime.now().strftime('%Y-%m-%d')
-        }
-        
-        data = self._make_request('TaiwanStockMarginShortSale', params)
+        data = self._make_request('TaiwanStockMarginPurchaseSale', stock_id, days=days) or []
         
         if not data:
             return 0
@@ -188,8 +179,8 @@ class FinMindClient:
         latest = margin_data[-1]
         oldest = margin_data[0]
         
-        latest_balance = int(latest.get('MarginBalance', 0))
-        oldest_balance = int(oldest.get('MarginBalance', 0))
+        latest_balance = int(latest.get('MarginPurchaseBalance', 0))
+        oldest_balance = int(oldest.get('MarginPurchaseBalance', 0))
         
         return latest_balance - oldest_balance
     
@@ -204,13 +195,7 @@ class FinMindClient:
         Returns:
             收盤價列表
         """
-        params = {
-            'stock_id': stock_id,
-            'start_date': (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d'),
-            'end_date': datetime.now().strftime('%Y-%m-%d')
-        }
-        
-        data = self._make_request('TaiwanStockPrice', params)
+        data = self._make_request('TaiwanStockPrice', stock_id, days=days) or []
         
         if not data:
             return []
