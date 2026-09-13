@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 狙擊手系統 Dashboard</title>
+    <!-- 引入 Tailwind CSS 與 Chart.js -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-4xl mx-auto bg-white shadow-lg rounded-xl p-6">
+        <h1 class="text-3xl font-bold text-gray-800 mb-2">🎯 狙擊手系統 - 績效儀表板</h1>
+        <p class="text-gray-500 mb-6" id="last-updated">最後更新時間：載入中...</p>
+
+        <!-- 數據卡片區 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <p class="text-sm text-blue-600">當前準確率</p>
+                <p class="text-3xl font-bold text-blue-800" id="accuracy">-</p>
+            </div>
+            <div class="bg-green-50 p-4 rounded-lg border border-green-200">
+                <p class="text-sm text-green-600">總預測次數</p>
+                <p class="text-3xl font-bold text-green-800" id="total-preds">-</p>
+            </div>
+            <div class="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                <p class="text-sm text-purple-600">當前 Prompt 版本</p>
+                <p class="text-3xl font-bold text-purple-800" id="prompt-version">-</p>
+            </div>
+        </div>
+
+        <!-- 圖表區 -->
+        <div class="bg-white border rounded-lg p-4 mb-6">
+            <h2 class="text-xl font-semibold mb-4">📈 準確率趨勢</h2>
+            <canvas id="accuracyChart"></canvas>
+        </div>
+
+        <!-- 近期預測紀錄表格 -->
+        <div class="bg-white border rounded-lg p-4">
+            <h2 class="text-xl font-semibold mb-4">📋 近期預測紀錄</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">時間</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">股票代碼</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">股票名稱</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">預測</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">準確率</th>
+                        </tr>
+                    </thead>
+                    <tbody id="predictions-table" class="bg-white divide-y divide-gray-200">
+                        <tr><td colspan="5" class="px-4 py-2 text-center text-gray-500">載入中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // GitHub Repository 設定
+        const REPO_USER = 'eddievibe4tech-byte'; 
+        const REPO_NAME = 'sniper-system-test';
+        const METRICS_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/performance_metrics.json`;
+        const TELEMETRY_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/telemetry.json`;
+
+        async function loadDashboard() {
+            try {
+                // 嘗試載入 performance_metrics.json，如果不存在則使用預設值
+                let metricsData = null;
+                try {
+                    const metricsResponse = await fetch(METRICS_URL);
+                    if (metricsResponse.ok) {
+                        metricsData = await metricsResponse.json();
+                    }
+                } catch (e) {
+                    console.log("performance_metrics.json 尚未存在，使用預設值");
+                }
+
+                // 嘗試載入 telemetry.json
+                let telemetryData = null;
+                try {
+                    const telemetryResponse = await fetch(TELEMETRY_URL);
+                    if (telemetryResponse.ok) {
+                        telemetryData = await telemetryResponse.json();
+                    }
+                } catch (e) {
+                    console.log("telemetry.json 尚未存在，使用預設值");
+                }
+
+                // 更新卡片數據
+                if (metricsData) {
+                    document.getElementById('accuracy').innerText = (metricsData.accuracy_rate || 0) + '%';
+                    document.getElementById('total-preds').innerText = metricsData.total_predictions || 0;
+                    document.getElementById('prompt-version').innerText = 'V' + (metricsData.current_version || 1);
+                    document.getElementById('last-updated').innerText = `最後更新時間：${new Date(metricsData.last_updated).toLocaleString('zh-TW')}`;
+                } else {
+                    document.getElementById('accuracy').innerText = '--';
+                    document.getElementById('total-preds').innerText = '--';
+                    document.getElementById('prompt-version').innerText = '--';
+                    document.getElementById('last-updated').innerText = '最後更新時間：暫無數據';
+                }
+
+                // 繪製圖表
+                const ctx = document.getElementById('accuracyChart').getContext('2d');
+                
+                // 如果有 version_stats 數據則使用，否則使用模擬數據
+                let labels = [];
+                let accuracyData = [];
+                
+                if (metricsData && metricsData.version_stats && metricsData.version_stats.length > 0) {
+                    metricsData.version_stats.forEach(stat => {
+                        labels.push('V' + stat.version);
+                        accuracyData.push(stat.accuracy);
+                    });
+                } else {
+                    // 模擬數據（當沒有實際數據時顯示）
+                    labels = ['V1', 'V2', 'V3', 'V4', 'V5'];
+                    accuracyData = [50, 55, 52, 60, 65];
+                }
+
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '準確率 (%)',
+                            data: accuracyData,
+                            borderColor: 'rgb(59, 130, 246)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                min: 0,
+                                max: 100
+                            }
+                        }
+                    }
+                });
+
+                // 更新預測紀錄表格
+                const tableBody = document.getElementById('predictions-table');
+                if (telemetryData && telemetryData.records && telemetryData.records.length > 0) {
+                    const recentRecords = telemetryData.records.slice(-10).reverse(); // 最近 10 筆
+                    tableBody.innerHTML = recentRecords.map(record => `
+                        <tr>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${new Date(record.timestamp).toLocaleString('zh-TW')}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${record.stock_code || '-'}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${record.stock_name || '-'}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${record.prediction || '-'}</td>
+                            <td class="px-4 py-2 whitespace-nowrap text-sm ${record.accuracy === '正確' ? 'text-green-600' : 'text-red-600'}">${record.accuracy || '-'}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-2 text-center text-gray-500">暫無預測紀錄</td></tr>';
+                }
+
+            } catch (error) {
+                console.error("無法載入數據，請確認 Repo 是否為 Public 或 JSON 路徑正確", error);
+                document.getElementById('last-updated').innerText = '載入失敗，請檢查控制台錯誤訊息';
+            }
+        }
+
+        loadDashboard();
+    </script>
+</body>
+</html>
