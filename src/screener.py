@@ -169,10 +169,16 @@ def save_screener_results(candidates: List[Dict]) -> None:
 
 
 if __name__ == "__main__":
-    # 測試執行
-    token = os.getenv('FINMIND_TOKEN', '')
+    # 🟢 修法 C：多重讀取環境變數，相容多種可能的 Secret 名稱
+    token = (
+        os.getenv('FINMIND_TOKEN')
+        or os.getenv('FINMIND_API_TOKEN')
+        or os.getenv('FINMIND_API_KEY')
+        or ''
+    )
+    
     if not token:
-        print("⚠️ 警告：未設定 FINMIND_TOKEN，請從環境變數提供")
+        print("⚠️ 警告：未設定 FINMIND_TOKEN / FINMIND_API_TOKEN / FINMIND_API_KEY，請從環境變數提供")
         exit(1)
     
     client = FinMindClient(token=token)
