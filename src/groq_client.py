@@ -5,9 +5,12 @@ Groq API 客戶端模組
 import os
 import json
 import time
+import logging
 import requests
 from typing import Dict, Optional, Any
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class GroqClient:
