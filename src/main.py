@@ -13,6 +13,11 @@ from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 
+# 🔴 最佳實踐：將 Import 移到檔案頂端
+from src.finmind_client import FinMindClient
+from src.groq_client import GroqClient
+from src.risk_calculator import calculate_volatility, assess_risk_level
+
 # 載入環境變數
 load_dotenv()
 
@@ -27,7 +32,11 @@ TZ_TAIPEI = timezone(timedelta(hours=8))
 
 
 def setup_logging():
-    """設定日誌"""
+    """設定日誌 (🟡 修正：避免重複設定 Handler)"""
+    logger = logging.getLogger()
+    if logger.hasHandlers():
+        logger.handlers.clear()  # 清除舊的 Handler
+    
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     log_file = LOGS_DIR / f"sniper_system_{datetime.now(TZ_TAIPEI).strftime('%Y%m%d')}.log"
     
@@ -61,19 +70,6 @@ def load_config(config_path: str = 'stock_pool.json') -> Dict:
         return {"stocks": [], "sectors": {}}
 
 
-def append_telemetry(record: Dict):
-    """附加一筆預測記錄到 telemetry.json"""
-    path = DATA_DIR / 'telemetry.json'
-    data = json.loads(path.read_text(encoding='utf-8')) if path.exists() \
-        else {'records': [], 'metadata': {}}
-    data['records'].append(record)
-    data['metadata'] = {
-        'created_at': data['metadata'].get('created_at') or record['timestamp'],
-        'total_records': len(data['records']),
-    }
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
-
-
 def update_performance_metrics(telemetry_data: Optional[Dict] = None):
     """更新績效指標到 performance_metrics.json"""
     path = DATA_DIR / 'performance_metrics.json'
@@ -84,11 +80,9 @@ def update_performance_metrics(telemetry_data: Optional[Dict] = None):
         if telemetry_path.exists():
             telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
         else:
-            telemetry_data = {'records': []}
+            telemetry_data = {'records': [], 'metadata': {}}
     
     records = telemetry_data.get('records', [])
-    
-    # 計算總預測數
     total_predictions = len(records)
     
     # 計算已驗證的準確率
@@ -137,10 +131,6 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
     Returns:
         分析結果字典
     """
-    from src.finmind_client import FinMindClient
-    from src.groq_client import GroqClient
-    from src.risk_calculator import calculate_volatility, assess_risk_level
-    
     logger.info(f"開始執行每日分析，模式：{mode}")
     
     # 使用台灣時間
@@ -152,82 +142,99 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
         'data': {}
     }
     
-    config = load_config()
-    stocks = config.get('stocks', [])
-    
-    if mode in ['full', 'analysis'] and stocks:
+    if mode in ['full', 'analysis']:
         logger.info("執行市場體制與個股分析...")
         
-        finmind = FinMindClient()  # 自動讀 FINMIND_API_TOKEN
-        groq = GroqClient()        # 自動讀 GROQ_API_KEY
+        # 🔴 修正：批次處理 telemetry (效能優化)
+        config = load_config()
+        stocks = config.get('stocks', [])
         
-        # 讀取分析 Prompt 模板
-        prompt_path = BASE_DIR / 'prompts' / 'main_analysis.txt'
-        try:
-            prompt_tpl = prompt_path.read_text(encoding='utf-8')
-        except FileNotFoundError:
-            logger.warning("Prompt 模板未找到，使用預設模板")
-            prompt_tpl = "請分析以下股票數據並輸出 JSON：{{\"ev_score\": 50, \"recommendation\": \"觀望\", \"reason\": \"數據不足\"}}"
+        # 讀取當前 Prompt 版本 (🔴 修正：不再硬編碼為 1)
+        history_path = DATA_DIR / 'prompt_history.json'
+        history = json.loads(history_path.read_text(encoding='utf-8')) if history_path.exists() else {}
+        current_prompt_version = history.get('current_version', 1)
         
-        regime = '震盪'  # 進階可改呼叫 groq.judge_regime(market_data)
+        # 🔴 修正：批次讀取 telemetry (避免頻繁 I/O)
+        telemetry_path = DATA_DIR / 'telemetry.json'
+        telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8')) if telemetry_path.exists() else {'records': [], 'metadata': {}}
         
         all_results = []
-        for stock in stocks:
-            code = stock['code']
-            try:
-                prices = finmind.get_stock_price(code) or []
-                revenue = finmind.get_revenue(code) or {}
-                stock_data = {
-                    'code': code,
-                    'name': stock['name'],
-                    'industry': stock.get('industry', ''),
-                    'regime': regime,
-                    'revenue_yoy': revenue.get('yoy_growth', 0),
-                    'inst_buy_days': finmind.get_institutional_buy(code) or 0,
-                    'margin_change': finmind.get_margin_balance(code) or 0,
-                    'change_5d': round((prices[-1] / prices[-6] - 1) * 100, 2) if len(prices) >= 6 else 0.0,
-                    'volatility': calculate_volatility(prices),
-                    'ex_div_days': '-',
-                }
-                
-                analysis = groq.analyze_stock(prompt_tpl, stock_data) or {}
-                record = {**stock_data, **analysis,
-                          'risk_level': assess_risk_level(stock_data['volatility'])}
-                all_results.append(record)
-                
-                # 寫入 telemetry
-                append_telemetry({
-                    'id': f"{now.strftime('%Y%m%d')}-{code}",
-                    'timestamp': now.isoformat(),
-                    'stock_code': code,
-                    'stock_name': stock['name'],
-                    'prompt_version': 1,
-                    'model': groq.model,
-                    'regime': regime,
-                    'input': stock_data,
-                    'prediction': analysis,
-                    'actual_result': None,  # 待回填
-                    'accuracy': None,       # 待回填
-                })
-                
-                logger.info(f"{code} 分析完成：EV={analysis.get('ev_score')}")
-                
-            except Exception as e:
-                logger.error(f"分析 {code} 失敗：{e}")
+        failed_count = 0
         
-        # 寫入 deep_analysis.json
-        deep = {
-            'analyzed_at': now.isoformat(),
-            'regime': regime,
-            'high_score_targets': [r for r in all_results if (r.get('ev_score') or 0) >= 70],
-            'all_results': all_results
-        }
-        (DATA_DIR / 'deep_analysis.json').write_text(
-            json.dumps(deep, ensure_ascii=False, indent=2), encoding='utf-8')
+        if stocks:
+            finmind = FinMindClient()
+            groq = GroqClient()
+            prompt_tpl = (BASE_DIR / 'prompts' / 'main_analysis.txt').read_text(encoding='utf-8')
+            regime = '震盪'  # 進階可改呼叫 groq.judge_regime(market_data)
+            
+            for stock in stocks:
+                code = stock['code']
+                try:
+                    prices = finmind.get_stock_price(code) or []
+                    revenue = finmind.get_revenue(code) or {}
+                    
+                    # 🔴 修正：除以零風險防護
+                    change_5d = round((prices[-1] / prices[-6] - 1) * 100, 2) if (len(prices) >= 6 and prices[-6] != 0) else 0.0
+                    
+                    stock_data = {
+                        'code': code,
+                        'name': stock['name'],
+                        'industry': stock.get('industry', ''),
+                        'regime': regime,
+                        'revenue_yoy': revenue.get('yoy_growth', 0),
+                        'inst_buy_days': finmind.get_institutional_buy(code) or 0,
+                        'margin_change': finmind.get_margin_balance(code) or 0,
+                        'change_5d': change_5d,
+                        'volatility': calculate_volatility(prices),
+                        'ex_div_days': '-',
+                    }
+                    analysis = groq.analyze_stock(prompt_tpl, stock_data) or {}
+                    record = {**stock_data, **analysis,
+                              'risk_level': assess_risk_level(stock_data['volatility'])}
+                    all_results.append(record)
+
+                    # 🔴 修正：記憶體中 Append (不再每次寫入檔案)
+                    telemetry_data['records'].append({
+                        'id': f"{now.strftime('%Y%m%d')}-{code}",
+                        'timestamp': now.isoformat(),
+                        'stock_code': code,
+                        'stock_name': stock['name'],
+                        'prompt_version': current_prompt_version,  # 🔴 修正：動態版本
+                        'model': groq.model,
+                        'regime': regime,
+                        'input': stock_data,
+                        'prediction': analysis,
+                        'actual_result': None,
+                        'accuracy': None,
+                    })
+                    logger.info(f"{code} 分析完成：EV={analysis.get('ev_score')}")
+                except Exception as e:
+                    logger.error(f"分析 {code} 失敗：{e}")
+                    failed_count += 1
+            
+            # 🔴 修正：一次性寫入 telemetry (批次處理)
+            if 'metadata' not in telemetry_data:
+                telemetry_data['metadata'] = {}
+            
+            telemetry_data['metadata']['created_at'] = telemetry_data['metadata'].get('created_at') or now.isoformat()
+            telemetry_data['metadata']['total_records'] = len(telemetry_data['records'])
+            telemetry_path.write_text(json.dumps(telemetry_data, ensure_ascii=False, indent=2), encoding='utf-8')
+            
+            # 🔴 修正：呼叫績效指標更新函數
+            update_performance_metrics(telemetry_data)
+            
+            # 🟡 修正：狀態判定更嚴謹
+            if failed_count > 0:
+                results['status'] = 'partial'
+                logger.warning(f"部分股票分析失敗：成功 {len(all_results)}/{len(stocks)}")
+            
+            deep = {'analyzed_at': now.isoformat(), 'regime': regime,
+                    'high_score_targets': [r for r in all_results if (r.get('ev_score') or 0) >= 70],
+                    'all_results': all_results}
+            (DATA_DIR / 'deep_analysis.json').write_text(
+                json.dumps(deep, ensure_ascii=False, indent=2), encoding='utf-8')
+            results['data']['stock_analysis'] = deep
         
-        results['data']['stock_analysis'] = deep
-        logger.info(f"深度分析結果已儲存，共分析 {len(all_results)} 檔股票")
-    
     if mode in ['full', 'risk']:
         logger.info("執行風險評估...")
         # TODO: 呼叫風險計算器
@@ -235,10 +242,7 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
     if mode in ['full', 'optimize']:
         logger.info("檢查是否需要優化 Prompt...")
         # TODO: 呼叫 Prompt Optimizer
-    
-    # 更新績效指標
-    update_performance_metrics()
-    
+
     # 儲存結果 (使用台灣時間命名)
     output_file = RESULTS_DIR / f"analysis_{now.strftime('%Y%m%d_%H%M%S')}.json"
     try:

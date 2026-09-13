@@ -65,7 +65,7 @@
                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">題材</th>
                     </tr></thead>
                     <tbody id="stock-pool-table" class="divide-y divide-gray-200">
-                        <tr><td colspan="4" class="px-4 py-4 text-center text-gray-500">載入中...</td></tr>
+                        <tr><td colspan="4" class="px-4 py-4 text-center"><div class="loading-spinner mx-auto mb-2"></div>載入股票池...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -84,7 +84,7 @@
                         <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">理由</th>
                     </tr></thead>
                     <tbody id="analysis-table" class="divide-y divide-gray-200">
-                        <tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">載入中...</td></tr>
+                        <tr><td colspan="5" class="px-4 py-4 text-center"><div class="loading-spinner mx-auto mb-2"></div>AI 分析運算中...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -132,17 +132,22 @@
         // ⚠️ 關鍵修正：將 Chart 實例存為變數，避免重複初始化報錯
         let accuracyChartInstance = null;
 
-        // 簡單的 XSS 防護函數
+        // 簡單的 XSS 防護函數 (🔴 修正：精確判斷 null/undefined，避免誤殺數字 0)
         function escapeHTML(str) {
-            if (!str) return '-';
+            if (str === null || str === undefined) return '-';
             return str.toString().replace(/[&<>"']/g, function(m) {
                 return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m];
             });
         }
 
+        // 🟡 Loading Spinner HTML 模板 (統一 UI)
+        function getLoadingHtml(message) {
+            return `<tr><td colspan="5" class="px-4 py-4 text-center"><div class="loading-spinner"></div> ${message}</td></tr>`;
+        }
+
         async function loadDashboard() {
             const tableBody = document.getElementById('predictions-table');
-            tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center"><div class="loading-spinner"></div> 載入數據中...</td></tr>';
+            tableBody.innerHTML = getLoadingHtml('載入數據中...');
 
             try {
                 // 並行載入四個 JSON：股票池、今日分析、績效指標、遙測記錄
@@ -153,43 +158,73 @@
                     fetch(TELEMETRY_URL)
                 ]);
 
-                // 處理股票池數據
+                // 處理股票池數據 (🔴 修正：獨立 try-catch，避免 JSON 解析失敗影響其他區塊)
+                let pool = null;
                 if (poolRes.status === 'fulfilled' && poolRes.value.ok) {
-                    const pool = await poolRes.value.json();
-                    document.getElementById('stock-pool-table').innerHTML = (pool.stocks || []).map(s => `
+                    try { 
+                        pool = await poolRes.value.json(); 
+                    } catch (e) { 
+                        console.warn('stock_pool.json 解析失敗', e); 
+                    }
+                }
+
+                // 處理今日分析數據
+                let deep = null;
+                if (deepRes.status === 'fulfilled' && deepRes.value.ok) {
+                    try { 
+                        deep = await deepRes.value.json(); 
+                    } catch (e) { 
+                        console.warn('deep_analysis.json 解析失敗', e); 
+                    }
+                }
+
+                // 渲染股票池表格
+                if (pool && pool.stocks) {
+                    document.getElementById('stock-pool-table').innerHTML = pool.stocks.map(s => `
                         <tr>
                             <td class="px-4 py-3 text-sm">${escapeHTML(s.code)}</td>
                             <td class="px-4 py-3 text-sm font-medium">${escapeHTML(s.name)}</td>
                             <td class="px-4 py-3 text-sm">${escapeHTML(s.industry)}</td>
-                            <td class="px-4 py-3 text-sm">${escapeHTML(s.topic)}</td>
+                            <td class="px-4 py-3 text-sm">${escapeHTML(s.topic || '-')}</td>
                         </tr>`).join('') ||
                         '<tr><td colspan="4" class="px-4 py-4 text-center text-gray-500">股票池為空</td></tr>';
+                } else {
+                    document.getElementById('stock-pool-table').innerHTML = '<tr><td colspan="4" class="px-4 py-4 text-center text-gray-500">暫無股票池數據</td></tr>';
                 }
 
-                // 處理今日分析數據
-                if (deepRes.status === 'fulfilled' && deepRes.value.ok) {
-                    const deep = await deepRes.value.json();
-                    document.getElementById('analysis-table').innerHTML = (deep.all_results || []).map(r => `
+                // 渲染今日分析表格
+                if (deep && deep.all_results) {
+                    document.getElementById('analysis-table').innerHTML = deep.all_results.map(r => `
                         <tr>
                             <td class="px-4 py-3 text-sm">${escapeHTML(r.code)} ${escapeHTML(r.name)}</td>
-                            <td class="px-4 py-3 text-sm font-bold ${(r.ev_score||0) >= 70 ? 'text-green-600' : 'text-gray-700'}">${r.ev_score ?? '-'}</td>
+                            <td class="px-4 py-3 text-sm font-bold ${(r.ev_score||0) >= 70 ? 'text-green-600' : 'text-gray-700'}">${escapeHTML(r.ev_score)}</td>
                             <td class="px-4 py-3 text-sm">${escapeHTML(r.recommendation)}</td>
                             <td class="px-4 py-3 text-sm">${escapeHTML(r.risk_level)}</td>
                             <td class="px-4 py-3 text-sm text-gray-600">${escapeHTML(r.reason)}</td>
                         </tr>`).join('') ||
                         '<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">今日尚無分析結果</td></tr>';
+                } else {
+                    document.getElementById('analysis-table').innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">暫無分析數據</td></tr>';
                 }
 
-                // 處理 Metrics 數據
+                // 處理 Metrics 數據 (🔴 修正：獨立 try-catch，避免 JSON 解析失敗影響其他區塊)
                 let metricsData = null;
                 if (metricsRes.status === 'fulfilled' && metricsRes.value.ok) {
-                    metricsData = await metricsRes.value.json();
+                    try {
+                        metricsData = await metricsRes.value.json();
+                    } catch (e) {
+                        console.warn('performance_metrics.json 解析失敗', e);
+                    }
                 }
 
                 // 處理 Telemetry 數據
                 let telemetryData = null;
                 if (telemetryRes.status === 'fulfilled' && telemetryRes.value.ok) {
-                    telemetryData = await telemetryRes.value.json();
+                    try {
+                        telemetryData = await telemetryRes.value.json();
+                    } catch (e) {
+                        console.warn('telemetry.json 解析失敗', e);
+                    }
                 }
 
                 // 1. 更新卡片數據
@@ -204,7 +239,7 @@
                     document.getElementById('last-updated').innerText = '最後更新時間：暫無數據 (檔案可能尚未生成)';
                 }
 
-                // 2. 繪製圖表 (⚠️ 修正：相容 Object 結構的 version_stats)
+                // 2. 繪製圖表 (⚠️ 修正：相容 Object 結構的 version_stats + 🟡 排序 X 軸版本)
                 const ctx = document.getElementById('accuracyChart').getContext('2d');
                 let labels = [];
                 let accuracyData = [];
@@ -225,6 +260,12 @@
                             const acc = stats.accuracy || (stats.correct / stats.predictions * 100) || 0;
                             accuracyData.push(acc);
                         });
+                        
+                        // 🟡 顯式排序確保趨勢線正確 (V1 -> V2 -> V3...)
+                        let combined = labels.map((label, index) => ({ label, data: accuracyData[index] }));
+                        combined.sort((a, b) => parseInt(a.label.replace('V', '')) - parseInt(b.label.replace('V', '')));
+                        labels = combined.map(c => c.label);
+                        accuracyData = combined.map(c => c.data);
                     }
                 }
 
