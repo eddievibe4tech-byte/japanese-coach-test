@@ -173,6 +173,10 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                     prices = finmind.get_stock_price(code) or []
                     revenue = finmind.get_revenue(code) or {}
                     
+                    # ✅ 新增：抓取財報與技術指標
+                    financials = finmind.get_financial_statements(code) or {}
+                    technicals = finmind.get_technical_indicators(code)
+                    
                     # 🔴 修正：除以零風險防護
                     change_5d = round((prices[-1] / prices[-6] - 1) * 100, 2) if (len(prices) >= 6 and prices[-6] != 0) else 0.0
                     
@@ -181,12 +185,22 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         'name': stock['name'],
                         'industry': stock.get('industry', ''),
                         'regime': regime,
+                        # 基本面數據
                         'revenue_yoy': revenue.get('yoy_growth', 0),
+                        'gross_margin': financials.get('gross_margin', 0),
+                        'net_margin': financials.get('net_margin', 0),
+                        'eps': financials.get('eps', 0),
+                        # 籌碼面數據
                         'inst_buy_days': finmind.get_institutional_buy(code) or 0,
                         'margin_change': finmind.get_margin_balance(code) or 0,
+                        # 技術面數據
                         'change_5d': change_5d,
                         'volatility': calculate_volatility(prices),
-                        'ex_div_days': '-',
+                        'ma5': technicals['ma5'],
+                        'ma20': technicals['ma20'],
+                        'rsi': technicals['rsi'],
+                        'macd': technicals['macd'],
+                        'price_above_ma20': technicals['price_above_ma20'],
                         'current_price': prices[-1] if prices else None,
                     }
                     analysis = groq.analyze_stock(prompt_tpl, stock_data) or {}
