@@ -4,14 +4,38 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🎯 狙擊手系統 Dashboard</title>
-    <!-- 引入 Tailwind CSS 與 Chart.js -->
+    <!-- 建議未來改用編譯好的 CSS 檔案，目前保留 Play CDN 方便開發 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* 簡單的 Loading 動畫 */
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </head>
-<body class="bg-gray-100 p-8">
+<body class="bg-gray-100 p-4 md:p-8">
     <div class="max-w-4xl mx-auto bg-white shadow-lg rounded-xl p-6">
-        <h1 class="text-3xl font-bold text-gray-800 mb-2">🎯 狙擊手系統 - 績效儀表板</h1>
-        <p class="text-gray-500 mb-6" id="last-updated">最後更新時間：載入中...</p>
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-800">🎯 狙擊手系統 - 績效儀表板</h1>
+                <p class="text-gray-500 text-sm" id="last-updated">最後更新時間：載入中...</p>
+            </div>
+            <button onclick="loadDashboard()" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center">
+                🔄 重新整理
+            </button>
+        </div>
 
         <!-- 數據卡片區 -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
@@ -32,7 +56,9 @@
         <!-- 圖表區 -->
         <div class="bg-white border rounded-lg p-4 mb-6">
             <h2 class="text-xl font-semibold mb-4">📈 準確率趨勢</h2>
-            <canvas id="accuracyChart"></canvas>
+            <div style="height: 300px;">
+                <canvas id="accuracyChart"></canvas>
+            </div>
         </div>
 
         <!-- 近期預測紀錄表格 -->
@@ -42,15 +68,15 @@
                 <table class="min-w-full divide-y divide-gray-200">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">時間</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">股票代碼</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">股票名稱</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">預測</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">準確率</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">時間</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">股票代碼</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">股票名稱</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">預測</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">結果</th>
                         </tr>
                     </thead>
                     <tbody id="predictions-table" class="bg-white divide-y divide-gray-200">
-                        <tr><td colspan="5" class="px-4 py-2 text-center text-gray-500">載入中...</td></tr>
+                        <tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">載入中...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -64,62 +90,88 @@
         const METRICS_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/performance_metrics.json`;
         const TELEMETRY_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/telemetry.json`;
 
+        // ⚠️ 關鍵修正：將 Chart 實例存為變數，避免重複初始化報錯
+        let accuracyChartInstance = null;
+
+        // 簡單的 XSS 防護函數
+        function escapeHTML(str) {
+            if (!str) return '-';
+            return str.toString().replace(/[&<>"']/g, function(m) {
+                return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m];
+            });
+        }
+
         async function loadDashboard() {
+            const tableBody = document.getElementById('predictions-table');
+            tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center"><div class="loading-spinner"></div> 載入數據中...</td></tr>';
+
             try {
-                // 嘗試載入 performance_metrics.json，如果不存在則使用預設值
+                // 並行載入兩個 JSON 以提升速度
+                const [metricsRes, telemetryRes] = await Promise.allSettled([
+                    fetch(METRICS_URL),
+                    fetch(TELEMETRY_URL)
+                ]);
+
+                // 處理 Metrics 數據
                 let metricsData = null;
-                try {
-                    const metricsResponse = await fetch(METRICS_URL);
-                    if (metricsResponse.ok) {
-                        metricsData = await metricsResponse.json();
-                    }
-                } catch (e) {
-                    console.log("performance_metrics.json 尚未存在，使用預設值");
+                if (metricsRes.status === 'fulfilled' && metricsRes.value.ok) {
+                    metricsData = await metricsRes.value.json();
                 }
 
-                // 嘗試載入 telemetry.json
+                // 處理 Telemetry 數據
                 let telemetryData = null;
-                try {
-                    const telemetryResponse = await fetch(TELEMETRY_URL);
-                    if (telemetryResponse.ok) {
-                        telemetryData = await telemetryResponse.json();
-                    }
-                } catch (e) {
-                    console.log("telemetry.json 尚未存在，使用預設值");
+                if (telemetryRes.status === 'fulfilled' && telemetryRes.value.ok) {
+                    telemetryData = await telemetryRes.value.json();
                 }
 
-                // 更新卡片數據
+                // 1. 更新卡片數據
                 if (metricsData) {
-                    document.getElementById('accuracy').innerText = (metricsData.accuracy_rate || 0) + '%';
+                    document.getElementById('accuracy').innerText = (metricsData.accuracy_rate || 0).toFixed(1) + '%';
                     document.getElementById('total-preds').innerText = metricsData.total_predictions || 0;
                     document.getElementById('prompt-version').innerText = 'V' + (metricsData.current_version || 1);
-                    document.getElementById('last-updated').innerText = `最後更新時間：${new Date(metricsData.last_updated).toLocaleString('zh-TW')}`;
+                    
+                    const updateTime = metricsData.last_updated ? new Date(metricsData.last_updated).toLocaleString('zh-TW') : '未知';
+                    document.getElementById('last-updated').innerText = `最後更新時間：${updateTime}`;
                 } else {
-                    document.getElementById('accuracy').innerText = '--';
-                    document.getElementById('total-preds').innerText = '--';
-                    document.getElementById('prompt-version').innerText = '--';
-                    document.getElementById('last-updated').innerText = '最後更新時間：暫無數據';
+                    document.getElementById('last-updated').innerText = '最後更新時間：暫無數據 (檔案可能尚未生成)';
                 }
 
-                // 繪製圖表
+                // 2. 繪製圖表 (⚠️ 修正：相容 Object 結構的 version_stats)
                 const ctx = document.getElementById('accuracyChart').getContext('2d');
-                
-                // 如果有 version_stats 數據則使用，否則使用模擬數據
                 let labels = [];
                 let accuracyData = [];
                 
-                if (metricsData && metricsData.version_stats && metricsData.version_stats.length > 0) {
-                    metricsData.version_stats.forEach(stat => {
-                        labels.push('V' + stat.version);
-                        accuracyData.push(stat.accuracy);
-                    });
-                } else {
-                    // 模擬數據（當沒有實際數據時顯示）
-                    labels = ['V1', 'V2', 'V3', 'V4', 'V5'];
-                    accuracyData = [50, 55, 52, 60, 65];
+                // 檢查 version_stats 是否存在
+                if (metricsData && metricsData.version_stats) {
+                    // 判斷是 Array 還是 Object
+                    if (Array.isArray(metricsData.version_stats)) {
+                        metricsData.version_stats.forEach(stat => {
+                            labels.push('V' + stat.version);
+                            accuracyData.push(stat.accuracy || 0);
+                        });
+                    } else {
+                        // 如果是 Object (e.g., {"1": {...}, "2": {...}})
+                        Object.entries(metricsData.version_stats).forEach(([version, stats]) => {
+                            labels.push('V' + version);
+                            // 假設 stats 物件中有 accuracy 欄位，若無則計算
+                            const acc = stats.accuracy || (stats.correct / stats.predictions * 100) || 0;
+                            accuracyData.push(acc);
+                        });
+                    }
                 }
 
-                new Chart(ctx, {
+                // 如果完全沒數據，使用模擬數據
+                if (labels.length === 0) {
+                    labels = ['V1 (模擬)'];
+                    accuracyData = [50];
+                }
+
+                // 銷毀舊圖表避免衝突
+                if (accuracyChartInstance) {
+                    accuracyChartInstance.destroy();
+                }
+
+                accuracyChartInstance = new Chart(ctx, {
                     type: 'line',
                     data: {
                         labels: labels,
@@ -134,46 +186,50 @@
                     },
                     options: {
                         responsive: true,
+                        maintainAspectRatio: false,
                         plugins: {
-                            legend: {
-                                display: true,
-                                position: 'top'
-                            }
+                            legend: { display: false }
                         },
                         scales: {
                             y: {
-                                beginAtZero: false,
-                                min: 0,
-                                max: 100
+                                beginAtZero: true,
+                                max: 100,
+                                ticks: { callback: (val) => val + '%' }
                             }
                         }
                     }
                 });
 
-                // 更新預測紀錄表格
-                const tableBody = document.getElementById('predictions-table');
+                // 3. 更新預測紀錄表格
                 if (telemetryData && telemetryData.records && telemetryData.records.length > 0) {
-                    const recentRecords = telemetryData.records.slice(-10).reverse(); // 最近 10 筆
-                    tableBody.innerHTML = recentRecords.map(record => `
-                        <tr>
-                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${new Date(record.timestamp).toLocaleString('zh-TW')}</td>
-                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${record.stock_code || '-'}</td>
-                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${record.stock_name || '-'}</td>
-                            <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-900">${record.prediction || '-'}</td>
-                            <td class="px-4 py-2 whitespace-nowrap text-sm ${record.accuracy === '正確' ? 'text-green-600' : 'text-red-600'}">${record.accuracy || '-'}</td>
-                        </tr>
-                    `).join('');
+                    const recentRecords = telemetryData.records.slice(-10).reverse();
+                    tableBody.innerHTML = recentRecords.map(record => {
+                        const time = record.timestamp ? new Date(record.timestamp).toLocaleString('zh-TW') : '-';
+                        const accText = record.accuracy === 1 ? '✅ 正確' : (record.accuracy === 0 ? '❌ 錯誤' : '⏳ 待驗證');
+                        const accClass = record.accuracy === 1 ? 'text-green-600 font-bold' : (record.accuracy === 0 ? 'text-red-600 font-bold' : 'text-gray-500');
+                        
+                        return `
+                            <tr>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(time)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.stock_code)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.stock_name)}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">${escapeHTML(record.prediction?.recommendation || '-')}</td>
+                                <td class="px-4 py-3 whitespace-nowrap text-sm ${accClass}">${accText}</td>
+                            </tr>
+                        `;
+                    }).join('');
                 } else {
-                    tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-2 text-center text-gray-500">暫無預測紀錄</td></tr>';
+                    tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">暫無預測紀錄</td></tr>';
                 }
 
             } catch (error) {
-                console.error("無法載入數據，請確認 Repo 是否為 Public 或 JSON 路徑正確", error);
-                document.getElementById('last-updated').innerText = '載入失敗，請檢查控制台錯誤訊息';
+                console.error("Dashboard Error:", error);
+                tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center text-red-500">載入失敗，請檢查網路或 Repo 權限</td></tr>';
             }
         }
 
-        loadDashboard();
+        // 頁面載入完成後執行
+        document.addEventListener('DOMContentLoaded', loadDashboard);
     </script>
 </body>
 </html>
