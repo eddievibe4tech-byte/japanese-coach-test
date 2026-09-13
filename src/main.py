@@ -244,7 +244,7 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         change_5d = round((prices[-1] / prices[-6] - 1) * 100, 2) if (len(prices) >= 6 and prices[-6] != 0) else 0.0
                         volatility = calculate_volatility(prices)
 
-                    # ✅ 5. 組裝最終的 stock_data
+                    # ✅ 5. 組裝最終的 stock_data（加入 data_source 標記）
                     stock_data = {
                         'code': code,
                         'name': stock['name'],
@@ -264,6 +264,7 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         'macd': macd,
                         'price_above_ma20': price_above_ma20,
                         'current_price': float(prices[-1]) if prices else 0.0,
+                        'data_source': 'yahoo' if use_yahoo_fallback else 'finmind',  # ✅ 加入數據來源標記
                     }
                     
                     # ✅ 6. 呼叫 Groq 分析 (加入容錯)

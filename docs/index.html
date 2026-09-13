@@ -400,6 +400,12 @@
                     <tr onclick="toggleDetail('${rowId}')" class="hover:bg-blue-50 cursor-pointer transition-colors border-b border-gray-100">
                         <td class="px-4 py-3 text-sm font-medium text-gray-900">
                             ${escapeHTML(r.code)} ${escapeHTML(r.name)} 
+                            <!-- 數據來源標籤 -->
+                            <span class="ml-2 px-2 py-0.5 text-xs rounded ${
+                                r.data_source === 'yahoo' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'
+                            }" title="${r.data_source === 'yahoo' ? 'Yahoo Finance 備援' : 'FinMind 主力'}">
+                                ${r.data_source === 'yahoo' ? 'Yahoo' : 'FinMind'}
+                            </span>
                             <span class="text-xs text-blue-500 ml-1">🔍</span>
                         </td>
                         <td class="px-4 py-3 text-sm text-gray-700">$${r.current_price ? r.current_price.toFixed(2) : '-'}</td>
