@@ -58,7 +58,8 @@ class GroqClient:
             "model": self.model,  # 例如 "qwen/qwen3.6-27b"
             "messages": messages,
             "temperature": temperature,  # ✅ 降低溫度，讓輸出更穩定
-            "max_tokens": 2048,
+            # ✅ 關鍵修正 1：大幅增加 max_tokens，防止 Qwen 的長思維鏈被截斷
+            "max_tokens": 4096,
             # ✅ 移除 response_format，讓模型自由輸出（Qwen 對嚴格 JSON 支援不佳）
         }
 
@@ -125,30 +126,40 @@ class GroqClient:
         content = response_data['choices'][0]['message']['content']
         logger.info(f"Groq 回傳內容（前 200 字元）：{content[:200]}...")
         
-        # ✅ 關鍵修正：處理 Qwen 的 <think> 標籤
-        # Qwen 模型會輸出 <think>...</think> 然後才是 JSON
-        if '<think>' in content:
-            # 找到 </think> 之後的內容
-            content = content.split('</think>')[-1].strip()
-            logger.info(f"提取 </think> 後的內容：{content[:200]}...")
+        # ✅ 關鍵修正 2：使用強大的 Regex/字串搜尋，無懼 <think> 標籤或截斷
+        # 尋找最後一個 '{' 和最後一個 '}' 之間的內容，這通常是模型輸出的最終 JSON
+        start_idx = content.rfind('{')
+        end_idx = content.rfind('}')
+        
+        json_str = None
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            json_str = content[start_idx:end_idx+1]
+            logger.info(f"成功提取 JSON 區塊：{json_str[:100]}...")
+        else:
+            logger.warning("無法在回應中找到有效的 JSON 區塊 (找不到 { 和 })")
+            logger.warning(f"原始內容結尾：...{content[-200:]}")
         
         # 解析 JSON 回應 - 加入更寬容的容錯機制
         try:
             # ✅ 從回應中提取 JSON（移除可能的 Markdown 標記）
-            content = content.strip()
-            if content.startswith('```'):
-                content = content.split('```')[1] if '```' in content[3:] else content[3:]
-                content = content.rsplit('```')[0] if '```' in content else content
-                content = content.strip()
+            if json_str:
+                content_to_parse = json_str.strip()
+            else:
+                content_to_parse = content.strip()
+            
+            if content_to_parse.startswith('```'):
+                content_to_parse = content_to_parse.split('```')[1] if '```' in content_to_parse[3:] else content_to_parse[3:]
+                content_to_parse = content_to_parse.rsplit('```')[0] if '```' in content_to_parse else content_to_parse
+                content_to_parse = content_to_parse.strip()
             
             # ✅ 嘗試多種 JSON 解析方式
             try:
                 # 方式 1：直接解析
-                result = json.loads(content)
+                result = json.loads(content_to_parse)
             except json.JSONDecodeError:
                 # 方式 2：移除可能的額外字元
                 import re
-                content_clean = re.sub(r'^\s*[\{"]\s*', '{', content)
+                content_clean = re.sub(r'^\s*[\{"]\s*', '{', content_to_parse)
                 content_clean = re.sub(r'\s*[\}"]\s*$', '}', content_clean)
                 result = json.loads(content_clean)
             
