@@ -152,37 +152,31 @@ class FinMindClient:
         
         return consecutive_buy_days
     
-    def get_margin_balance(self, stock_id: str, days: int = 5) -> Optional[int]:
+    def get_margin_balance(self, stock_id: str, days: int = 10) -> int:
         """
-        取得融資增減
+        計算融資增減 (今日餘額 - 昨日餘額)
         
         Args:
             stock_id: 股票代號
             days: 檢查的天數範圍
             
         Returns:
-            近幾日融資增減張數
+            融資增減張數
         """
-        data = self._make_request('TaiwanStockMarginPurchaseSale', stock_id, days=days) or []
-        
-        if not data:
+        # ✅ 修正 Dataset 名稱
+        data = self._make_request('TaiwanStockMarginPurchaseShortSale', stock_id, days=days)
+        if not data or len(data) < 2:
             return 0
         
-        margin_data = data
-        if not margin_data:
-            return 0
+        # ✅ 修正欄位名稱 (取最近兩筆)
+        latest = data[-1]
+        prev = data[-2]
         
-        # 計算融資增減（今日 vs 幾日前）
-        if len(margin_data) < 2:
-            return 0
+        today_balance = latest.get('MarginPurchaseTodayBalance', 0)
+        yesterday_balance = prev.get('MarginPurchaseTodayBalance', 0)
         
-        latest = margin_data[-1]
-        oldest = margin_data[0]
-        
-        latest_balance = int(latest.get('MarginPurchaseBalance', 0))
-        oldest_balance = int(oldest.get('MarginPurchaseBalance', 0))
-        
-        return latest_balance - oldest_balance
+        # 回傳增減張數 (FinMind 單位通常是張)
+        return int(today_balance - yesterday_balance)
     
     def get_stock_price(self, stock_id: str, days: int = 30) -> Optional[List[float]]:
         """
