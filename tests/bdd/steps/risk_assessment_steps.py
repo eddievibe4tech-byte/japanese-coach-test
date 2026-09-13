@@ -5,7 +5,8 @@ from behave import given, when, then
 
 
 @given('監控池中有以下股票')
-def step_impl(context):
+def given_risk_stock_pool(context):
+    """設定風險評估的股票監控池"""
     stocks = []
     for row in context.table:
         stock = {
@@ -20,12 +21,14 @@ def step_impl(context):
 
 
 @given('產業集中度上限為 {limit}')
-def step_impl(context, limit):
+def given_risk_industry_limit(context, limit):
+    """設定產業集中度上限"""
     context.industry_limit = int(limit)
 
 
 @when('系統執行風險評估')
-def step_impl(context):
+def when_execute_risk_assessment_only(context):
+    """執行風險評估流程"""
     # 計算產業集中度
     industries = {}
     for stock in context.test_stocks:
@@ -68,25 +71,30 @@ def step_impl(context):
 
 
 @then('風險分數應該大於等於 {score}')
-def step_impl(context, score):
+def then_risk_assessment_score_min(context, score):
+    """驗證風險分數最小值"""
     assert context.risk_score >= int(score)
 
 
 @then('警告訊息應該包含 "{message}"')
-def step_impl(context, message):
+def then_risk_warning_message_contains(context, message):
+    """驗證警告訊息內容"""
     assert any(message in w for w in context.warnings)
 
 
 @then('風險狀態應該為 "{status}"')
-def step_impl(context, status):
+def then_risk_assessment_status(context, status):
+    """驗證風險狀態"""
     assert context.risk_status == status
 
 
 @then('建議動作應該為 "{suggestion}"')
-def step_impl(context, suggestion):
+def then_risk_suggestion_action(context, suggestion):
+    """驗證建議動作"""
     assert context.suggestion == suggestion
 
 
 @then('風險分數應該小於等於 {score}')
-def step_impl(context, score):
+def then_risk_assessment_score_max(context, score):
+    """驗證風險分數最大值"""
     assert context.risk_score <= int(score)

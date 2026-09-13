@@ -29,9 +29,20 @@ def after_all(context):
 
 
 def before_scenario(context, scenario):
-    """每個場景開始前執行"""
+    """每個場景開始前執行 - 初始化 Context 狀態"""
     # 重置臨時數據
     _create_temp_data_files(context)
+    
+    # 統一初始化 Context 狀態，避免殘留
+    context.prediction_count = 0
+    context.current_version = 1
+    context.api_failed = False
+    context.optimization_skipped = False
+    context.optimization_failed = False
+    context.new_version = None
+    context.backup_file = None
+    context.accuracy_rate = None
+    context.optimization_threshold = 5
 
 
 def _create_temp_data_files(context):
