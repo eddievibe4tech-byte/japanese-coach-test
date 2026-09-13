@@ -36,8 +36,8 @@ class TestMakeRequest:
         """測試成功的 API 請求"""
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
-            json={'status': 200, 'data': {'result': 'test'}},
+            'https://api.finmindtrade.com/api/v4/data',
+            json={'status': 200, 'msg': 'success', 'data': [{'result': 'test'}]},
             status=200
         )
         
@@ -50,7 +50,7 @@ class TestMakeRequest:
         """測試 API 錯誤回應"""
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
+            'https://api.finmindtrade.com/api/v4/data',
             json={'status': 400, 'msg': 'Invalid token'},
             status=200
         )
@@ -66,17 +66,16 @@ class TestGetRevenue:
         """測試成功取得營收數據"""
         mock_data = {
             'status': 200,
-            'data': {
-                'data': [
-                    {'date': '2024-01-01', 'revenue': 1000000},
-                    {'date': '2024-02-01', 'revenue': 1200000}
-                ]
-            }
+            'msg': 'success',
+            'data': [
+                {'date': '2024-01-01', 'revenue': 1000000},
+                {'date': '2024-02-01', 'revenue': 1200000}
+            ]
         }
         
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
+            'https://api.finmindtrade.com/api/v4/data',
             json=mock_data,
             status=200
         )
@@ -93,14 +92,13 @@ class TestGetRevenue:
         """測試空營收數據"""
         mock_data = {
             'status': 200,
-            'data': {
-                'data': []
-            }
+            'msg': 'success',
+            'data': []
         }
         
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
+            'https://api.finmindtrade.com/api/v4/data',
             json=mock_data,
             status=200
         )
@@ -115,7 +113,7 @@ class TestGetRevenue:
         """測試 API 失敗"""
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
+            'https://api.finmindtrade.com/api/v4/data',
             json={'status': 500, 'msg': 'Server error'},
             status=200
         )
@@ -141,18 +139,17 @@ class TestGetInstitutionalBuy:
         """測試連續買超天數計算"""
         mock_data = {
             'status': 200,
-            'data': {
-                'data': [
-                    {'date': '2024-01-01', 'buy_amount': 100, 'sell_amount': 50},
-                    {'date': '2024-01-02', 'buy_amount': 200, 'sell_amount': 100},
-                    {'date': '2024-01-03', 'buy_amount': 150, 'sell_amount': 80},
-                ]
-            }
+            'msg': 'success',
+            'data': [
+                {'date': '2024-01-01', 'buy': 100, 'sell': 50},
+                {'date': '2024-01-02', 'buy': 200, 'sell': 100},
+                {'date': '2024-01-03', 'buy': 150, 'sell': 80},
+            ]
         }
         
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
+            'https://api.finmindtrade.com/api/v4/data',
             json=mock_data,
             status=200
         )
@@ -167,18 +164,17 @@ class TestGetInstitutionalBuy:
         """測試買超中斷"""
         mock_data = {
             'status': 200,
-            'data': {
-                'data': [
-                    {'date': '2024-01-01', 'buy_amount': 100, 'sell_amount': 50},
-                    {'date': '2024-01-02', 'buy_amount': 50, 'sell_amount': 100},  # 賣超
-                    {'date': '2024-01-03', 'buy_amount': 200, 'sell_amount': 100},
-                ]
-            }
+            'msg': 'success',
+            'data': [
+                {'date': '2024-01-01', 'buy': 100, 'sell': 50},
+                {'date': '2024-01-02', 'buy': 50, 'sell': 100},  # 賣超
+                {'date': '2024-01-03', 'buy': 200, 'sell': 100},
+            ]
         }
         
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
+            'https://api.finmindtrade.com/api/v4/data',
             json=mock_data,
             status=200
         )
@@ -197,17 +193,16 @@ class TestGetMarginBalance:
         """測試融資增加"""
         mock_data = {
             'status': 200,
-            'data': {
-                'data': [
-                    {'date': '2024-01-01', 'MarginBalance': 1000},
-                    {'date': '2024-01-05', 'MarginBalance': 1500}
-                ]
-            }
+            'msg': 'success',
+            'data': [
+                {'date': '2024-01-01', 'MarginBalance': 1000},
+                {'date': '2024-01-05', 'MarginBalance': 1500}
+            ]
         }
         
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
+            'https://api.finmindtrade.com/api/v4/data',
             json=mock_data,
             status=200
         )
@@ -222,17 +217,16 @@ class TestGetMarginBalance:
         """測試融資減少"""
         mock_data = {
             'status': 200,
-            'data': {
-                'data': [
-                    {'date': '2024-01-01', 'MarginBalance': 1500},
-                    {'date': '2024-01-05', 'MarginBalance': 1000}
-                ]
-            }
+            'msg': 'success',
+            'data': [
+                {'date': '2024-01-01', 'MarginBalance': 1500},
+                {'date': '2024-01-05', 'MarginBalance': 1000}
+            ]
         }
         
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
+            'https://api.finmindtrade.com/api/v4/data',
             json=mock_data,
             status=200
         )
@@ -251,18 +245,17 @@ class TestGetStockPrice:
         """測試成功取得股價"""
         mock_data = {
             'status': 200,
-            'data': {
-                'data': [
-                    {'date': '2024-01-01', 'close': 100},
-                    {'date': '2024-01-02', 'close': 102},
-                    {'date': '2024-01-03', 'close': 101}
-                ]
-            }
+            'msg': 'success',
+            'data': [
+                {'date': '2024-01-01', 'close': 100},
+                {'date': '2024-01-02', 'close': 102},
+                {'date': '2024-01-03', 'close': 101}
+            ]
         }
         
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
+            'https://api.finmindtrade.com/api/v4/data',
             json=mock_data,
             status=200
         )
@@ -278,14 +271,13 @@ class TestGetStockPrice:
         """測試空股價數據"""
         mock_data = {
             'status': 200,
-            'data': {
-                'data': []
-            }
+            'msg': 'success',
+            'data': []
         }
         
         responses.add(
             responses.GET,
-            'https://api.finmindtrade.com/api/v3/data/dataset',
+            'https://api.finmindtrade.com/api/v4/data',
             json=mock_data,
             status=200
         )

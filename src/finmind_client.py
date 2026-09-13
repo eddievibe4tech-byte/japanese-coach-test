@@ -19,36 +19,41 @@ class FinMindClient:
             token: FinMind API Token，若未提供則從環境變數 FINMIND_TOKEN 讀取
         """
         self.token = token or os.getenv('FINMIND_TOKEN', '')
-        self.base_url = 'https://api.finmindtrade.com/api/v3/data'
+        self.base_url = 'https://api.finmindtrade.com/api/v4/data'
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'SniperSystem/1.0',
             'Content-Type': 'application/json'
         })
     
-    def _make_request(self, endpoint: str, params: Dict) -> Optional[Dict]:
+    def _make_request(self, dataset: str, params: Dict) -> Optional[List[Dict]]:
         """
         發送 API 請求
         
         Args:
-            endpoint: API 端點
-            params: 請求參數
+            dataset: 數據集名稱
+            params: 其他請求參數（包含 stock_id, start_date, end_date 等）
             
         Returns:
-            API 回應資料，失敗時返回 None
+            API 回應資料（data 陣列），失敗時返回 None
         """
         if not self.token:
             raise ValueError("FinMind Token 未設定")
         
-        params['token'] = self.token
+        request_params = {
+            'dataset': dataset,
+            'token': self.token,
+            **params
+        }
         
         try:
-            response = self.session.get(f"{self.base_url}/{endpoint}", params=params, timeout=10)
+            response = self.session.get(self.base_url, params=request_params, timeout=10)
             response.raise_for_status()
             data = response.json()
             
             if data.get('status') == 200:
-                return data.get('data', {})
+                # FinMind 回傳的 data 直接是陣列
+                return data.get('data', [])
             else:
                 print(f"API 錯誤：{data.get('msg', 'Unknown error')}")
                 return None
@@ -72,19 +77,18 @@ class FinMindClient:
             包含最新月營收年增率的字典
         """
         params = {
-            'dataset': 'TaiwanStockRevenue',
             'stock_id': stock_id,
             'start_date': (datetime.now() - timedelta(days=months*30)).strftime('%Y-%m-%d'),
             'end_date': datetime.now().strftime('%Y-%m-%d')
         }
         
-        data = self._make_request('dataset', params)
+        data = self._make_request('TaiwanStockRevenue', params)
         
-        if not data or 'data' not in data:
+        if not data:
             return None
         
-        # 解析營收資料
-        revenue_data = data['data']
+        # 解析營收資料 (data 直接是陣列)
+        revenue_data = data
         if not revenue_data:
             return None
         
@@ -93,13 +97,6 @@ class FinMindClient:
         
         # 計算年增率
         current_revenue = float(latest.get('revenue', 0))
-        
-        # 找去年同月資料
-        yoy_revenue = 0
-        for record in reversed(revenue_data[:-1]):
-            if record.get('date', '')[:7] == latest.get('date', '')[:7]:
-                # 找到去年同月（簡化處理）
-                break
         
         # 簡化：假設 API 已提供 YoY 或我們用前後月比較
         # 實際應比較去年同月，此處簡化演示
@@ -128,18 +125,17 @@ class FinMindClient:
             連續買超天數
         """
         params = {
-            'dataset': 'TaiwanStockInstitutionalInvestorsBuySell',
             'stock_id': stock_id,
             'start_date': (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d'),
             'end_date': datetime.now().strftime('%Y-%m-%d')
         }
         
-        data = self._make_request('dataset', params)
+        data = self._make_request('TaiwanStockInstitutionalInvestorsBuySell', params)
         
-        if not data or 'data' not in data:
+        if not data:
             return 0
         
-        institutional_data = data['data']
+        institutional_data = data
         if not institutional_data:
             return 0
         
@@ -148,9 +144,9 @@ class FinMindClient:
         
         # 由最近往回推
         for record in reversed(institutional_data):
-            buy_amount = int(record.get('buy_amount', 0))
-            sell_amount = int(record.get('sell_amount', 0))
-            net_buy = buy_amount - sell_amount
+            buy = int(record.get('buy', 0))
+            sell = int(record.get('sell', 0))
+            net_buy = record.get('net_buy', buy - sell)
             
             if net_buy > 0:
                 consecutive_buy_days += 1
@@ -171,18 +167,17 @@ class FinMindClient:
             近幾日融資增減張數
         """
         params = {
-            'dataset': 'TaiwanStockMarginShortSale',
             'stock_id': stock_id,
             'start_date': (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d'),
             'end_date': datetime.now().strftime('%Y-%m-%d')
         }
         
-        data = self._make_request('dataset', params)
+        data = self._make_request('TaiwanStockMarginShortSale', params)
         
-        if not data or 'data' not in data:
+        if not data:
             return 0
         
-        margin_data = data['data']
+        margin_data = data
         if not margin_data:
             return 0
         
@@ -210,18 +205,17 @@ class FinMindClient:
             收盤價列表
         """
         params = {
-            'dataset': 'TaiwanStockPrice',
             'stock_id': stock_id,
             'start_date': (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d'),
             'end_date': datetime.now().strftime('%Y-%m-%d')
         }
         
-        data = self._make_request('dataset', params)
+        data = self._make_request('TaiwanStockPrice', params)
         
-        if not data or 'data' not in data:
+        if not data:
             return []
         
-        price_data = data['data']
+        price_data = data
         if not price_data:
             return []
         
