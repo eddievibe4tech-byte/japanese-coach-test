@@ -1,0 +1,362 @@
+openapi: 3.0.3
+info:
+  title: 狙擊手系統 API
+  description: |
+    Regime 自適應正期望值投資決策系統。
+    
+    本系統為盤後分析工具，透過 GitHub Actions 排程執行，
+    分析結果以 JSON 格式儲存於 GitHub Repository。
+  version: 1.0.0
+  contact:
+    name: Sniper System
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.github.com/repos/{owner}/{repo}
+    description: GitHub API（數據存取）
+    variables:
+      owner:
+        default: your-username
+      repo:
+        default: sniper-system
+
+tags:
+  - name: Analysis
+    description: 每日分析與評分
+  - name: Risk
+    description: 風險評估
+  - name: Prompt
+    description: Prompt 管理與優化
+  - name: Telemetry
+    description: 遙測記錄與績效追蹤
+
+paths:
+  /contents/data/regime.json:
+    get:
+      tags: [Analysis]
+      summary: 取得市場體制設定
+      operationId: getRegime
+      responses:
+        '200':
+          description: 成功取得體制設定
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegimeConfig'
+
+  /contents/data/stock_pool.json:
+    get:
+      tags: [Analysis]
+      summary: 取得股票監控池
+      operationId: getStockPool
+      responses:
+        '200':
+          description: 成功取得監控池
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StockPool'
+
+  /contents/data/deep_analysis.json:
+    get:
+      tags: [Analysis]
+      summary: 取得 AI 深度分析結果
+      operationId: getDeepAnalysis
+      responses:
+        '200':
+          description: 成功取得分析結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeepAnalysis'
+
+  /contents/data/risk_report.json:
+    get:
+      tags: [Risk]
+      summary: 取得風險評估報告
+      operationId: getRiskReport
+      responses:
+        '200':
+          description: 成功取得風險報告
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskReport'
+
+  /contents/data/telemetry.json:
+    get:
+      tags: [Telemetry]
+      summary: 取得遙測記錄
+      operationId: getTelemetry
+      responses:
+        '200':
+          description: 成功取得遙測記錄
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Telemetry'
+
+  /contents/data/prompt_history.json:
+    get:
+      tags: [Prompt]
+      summary: 取得 Prompt 優化歷史
+      operationId: getPromptHistory
+      responses:
+        '200':
+          description: 成功取得優化歷史
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptHistory'
+
+  /contents/data/performance_metrics.json:
+    get:
+      tags: [Telemetry]
+      summary: 取得績效指標
+      operationId: getPerformanceMetrics
+      responses:
+        '200':
+          description: 成功取得績效指標
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceMetrics'
+
+components:
+  schemas:
+    RegimeConfig:
+      type: object
+      required:
+        - current_regime
+        - trade_size
+      properties:
+        current_regime:
+          type: string
+          enum: [多頭，震盪，空頭]
+        trade_size:
+          type: integer
+          example: 5000
+        target_rr:
+          type: number
+          example: 2
+        max_positions:
+          type: integer
+          example: 3
+        max_risk_percent:
+          type: number
+          example: 2
+        industry_limit_percent:
+          type: number
+          example: 40
+        leverage_limit:
+          type: number
+          example: 5
+        volatility_limit:
+          type: number
+          example: 30
+        last_updated:
+          type: string
+          format: date
+
+    StockPool:
+      type: object
+      properties:
+        stocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/Stock'
+
+    Stock:
+      type: object
+      required:
+        - code
+        - name
+      properties:
+        code:
+          type: string
+          example: "2330"
+        name:
+          type: string
+          example: "台積電"
+        industry:
+          type: string
+          example: "半導體"
+        topic:
+          type: string
+          example: "AI/先進製程"
+        ex_div_date:
+          type: string
+          format: date
+        notes:
+          type: string
+
+    DeepAnalysis:
+      type: object
+      properties:
+        analyzed_at:
+          type: string
+          format: date-time
+        regime:
+          type: string
+        high_score_targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockAnalysis'
+        all_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/StockAnalysis'
+
+    StockAnalysis:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        industry:
+          type: string
+        current_price:
+          type: number
+        revenue_yoy:
+          type: number
+        inst_buy_days:
+          type: integer
+        margin_change:
+          type: integer
+        change_5d:
+          type: number
+        volatility:
+          type: number
+        risk_level:
+          type: string
+          enum: [🟢 低風險，🟡 中風險，🟠 高風險，🔴 極高風險]
+        ev_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        recommendation:
+          type: string
+          enum: [積極買入，觀望，避開]
+        warrant_condition:
+          type: string
+
+    RiskReport:
+      type: object
+      properties:
+        total_positions:
+          type: integer
+        industry_distribution:
+          type: object
+          additionalProperties:
+            type: string
+        high_risk_count:
+          type: integer
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        risk_status:
+          type: string
+          enum: [✅ 安全，🟡 注意，🔴 危險]
+        warnings:
+          type: array
+          items:
+            type: string
+        suggestion:
+          type: string
+        assessed_at:
+          type: string
+          format: date-time
+
+    Telemetry:
+      type: object
+      properties:
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/TelemetryRecord'
+        metadata:
+          type: object
+          properties:
+            created_at:
+              type: string
+              format: date-time
+            total_records:
+              type: integer
+
+    TelemetryRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        stock_code:
+          type: string
+        stock_name:
+          type: string
+        prompt_version:
+          type: integer
+        model:
+          type: string
+        regime:
+          type: string
+        input:
+          type: object
+        prediction:
+          type: object
+        actual_result:
+          type: object
+          nullable: true
+        accuracy:
+          type: integer
+          nullable: true
+
+    PromptHistory:
+      type: object
+      properties:
+        current_version:
+          type: integer
+        optimizations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromptOptimization'
+
+    PromptOptimization:
+      type: object
+      properties:
+        version:
+          type: integer
+        date:
+          type: string
+          format: date-time
+        prompt_name:
+          type: string
+        analysis:
+          type: string
+        improvements:
+          type: array
+          items:
+            type: string
+        expected_improvement:
+          type: string
+
+    PerformanceMetrics:
+      type: object
+      properties:
+        total_predictions:
+          type: integer
+        accuracy_rate:
+          type: number
+        current_version:
+          type: integer
+        version_stats:
+          type: object
+          additionalProperties:
+            type: object
+        last_updated:
+          type: string
+          format: date-time

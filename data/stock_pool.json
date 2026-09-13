@@ -1,0 +1,36 @@
+{
+  "stocks": [
+    {
+      "code": "2330",
+      "name": "台積電",
+      "industry": "半導體",
+      "topic": "AI/先進製程",
+      "ex_div_date": "",
+      "notes": "權值股，流動性最佳"
+    },
+    {
+      "code": "2308",
+      "name": "台達電",
+      "industry": "電子",
+      "topic": "AI 電源/散熱",
+      "ex_div_date": "",
+      "notes": "電力題材"
+    },
+    {
+      "code": "2454",
+      "name": "聯發科",
+      "industry": "半導體",
+      "topic": "邊緣 AI",
+      "ex_div_date": "",
+      "notes": "IC 設計"
+    },
+    {
+      "code": "2881",
+      "name": "富邦金",
+      "industry": "金融",
+      "topic": "高利率受惠",
+      "ex_div_date": "",
+      "notes": "金融股"
+    }
+  ]
+}
