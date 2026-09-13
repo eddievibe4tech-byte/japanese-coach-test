@@ -374,10 +374,11 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                     # ✅ 7. 記憶體中 Append
                     # 🔴 修正：prediction 應該包含完整的分析結果，而不只是 AI 回應
                     # 這樣儀表板才能正確顯示股票代碼、名稱、建議等資訊
+                    analysis_dict = analysis if isinstance(analysis, dict) else {}
                     prediction_record = {
-                        'ev_score': analysis.get('ev_score') if analysis else None,
-                        'recommendation': analysis.get('recommendation') if analysis else '-',
-                        'reason': analysis.get('reason') if analysis else 'AI 分析失敗',
+                        'ev_score': analysis_dict.get('ev_score'),
+                        'recommendation': analysis_dict.get('recommendation', '-'),
+                        'reason': analysis_dict.get('reason', 'AI 分析失敗'),
                         # 加入完整的股票數據供儀表板使用
                         'stock_code': code,
                         'stock_name': stock['name'],
@@ -388,7 +389,8 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         'rsi': stock_data.get('rsi', None),
                     }
                     
-                    telemetry_data['records'].append({
+                    # 🔴 修正：確保 prediction 不會是空物件
+                    telemetry_record = {
                         'id': f"{now.strftime('%Y%m%d')}-{code}",
                         'timestamp': now.isoformat(),
                         'stock_code': code,
@@ -402,8 +404,20 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         'accuracy': None,
                         # 🔴 P0 修正：記錄 entry_price 供自動驗證使用
                         'entry_price': prices[-1] if prices else None,
-                    })
-                    logger.info(f"{code} 分析完成：EV={analysis.get('ev_score') if analysis else 'N/A'}")
+                    }
+                    
+                    # 🔴 防禦性檢查：如果 prediction 為空，則直接使用 record 的數據
+                    if not prediction_record.get('recommendation') or prediction_record.get('recommendation') == '-':
+                        telemetry_record['prediction'] = {
+                            'recommendation': record.get('recommendation', '觀望'),
+                            'ev_score': record.get('ev_score', 50),
+                            'reason': record.get('reason', '無 AI 理由'),
+                            'stock_code': code,
+                            'stock_name': stock['name'],
+                        }
+                    
+                    telemetry_data['records'].append(telemetry_record)
+                    logger.info(f"{code} 分析完成：EV={analysis_dict.get('ev_score') if analysis_dict else 'N/A'}")
                     
                 except Exception as e:
                     logger.error(f"分析 {code} 完全失敗：{e}")
