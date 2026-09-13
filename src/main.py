@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from src.finmind_client import FinMindClient
 from src.groq_client import GroqClient
 from src.risk_calculator import calculate_volatility, assess_risk_level
+from src.yahoo_client import YahooFinanceClient
 
 
 def auto_verify_predictions(telemetry_data: Dict, finmind: FinMindClient, horizon: int = 5) -> int:
@@ -255,43 +256,128 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
         if stocks:
             finmind = FinMindClient()
             groq = GroqClient()
+            yahoo = YahooFinanceClient()  # ✅ 初始化備援客戶端
             prompt_tpl = (BASE_DIR / 'prompts' / 'main_analysis.txt').read_text(encoding='utf-8')
             regime = '震盪'  # 進階可改呼叫 groq.judge_regime(market_data)
             
             for stock in stocks:
                 code = stock['code']
                 try:
-                    prices = finmind.get_stock_price(code) or []
-                    revenue = finmind.get_revenue(code) or {}
+                    # ✅ 1. 初始化所有變數為安全預設值
+                    prices = []
+                    revenue_yoy = 0.0
+                    gross_margin = 0.0
+                    net_margin = 0.0
+                    eps = 0.0
+                    inst_buy_days = 0
+                    margin_change = 0
+                    ma5, ma20, rsi, macd = 0.0, 0.0, 50.0, 0.0
+                    price_above_ma20 = False
+                    change_5d = 0.0
+                    volatility = 0.0
+                    use_yahoo_fallback = False
                     
-                    # 🔴 修正：除以零風險防護
-                    change_5d = round((prices[-1] / prices[-6] - 1) * 100, 2) if (len(prices) >= 6 and prices[-6] != 0) else 0.0
+                    # ✅ 2. 嘗試使用 FinMind (主力)
+                    try:
+                        prices = finmind.get_stock_price(code) or []
+                        revenue = finmind.get_revenue(code) or {}
+                        revenue_yoy = revenue.get('yoy_growth', 0.0)
+                        
+                        # 財報數據
+                        try:
+                            financials = finmind.get_financial_statements(code) or {}
+                            gross_margin = financials.get('gross_margin', 0.0)
+                            net_margin = financials.get('net_margin', 0.0)
+                            eps = financials.get('eps', 0.0)
+                        except Exception as e:
+                            logger.warning(f"{code} 財報數據抓取失敗，使用預設值：{e}")
+                        
+                        # 技術指標
+                        try:
+                            tech = finmind.get_technical_indicators(code) or {}
+                            ma5 = tech.get('ma5', 0.0)
+                            ma20 = tech.get('ma20', 0.0)
+                            rsi = tech.get('rsi', 50.0)
+                            macd = tech.get('macd', 0.0)
+                            price_above_ma20 = tech.get('price_above_ma20', False)
+                        except Exception as e:
+                            logger.warning(f"{code} 技術指標計算失敗：{e}")
+                        
+                        # ✅ 關鍵：在這裡一次性取得籌碼數據，避免後續重複呼叫 API
+                        inst_buy_days = finmind.get_institutional_buy(code) or 0
+                        margin_change = finmind.get_margin_balance(code) or 0
+                        
+                        logger.info(f"{code}: 使用 FinMind 數據成功")
+                        
+                    except Exception as e:
+                        # ✅ 3. FinMind 失敗，切換到 Yahoo (備援)
+                        logger.warning(f"{code}: FinMind 失敗 ({e})，切換至 Yahoo Finance 備援")
+                        use_yahoo_fallback = True
+                        
+                        yahoo_data = yahoo.get_stock_data(code)
+                        if yahoo_data:
+                            prices = yahoo_data['prices']
+                            # 直接使用 Yahoo 算好的指標，避免重複計算
+                            change_5d = yahoo_data['change_5d']
+                            volatility = yahoo_data['volatility']
+                            ma5 = yahoo_data['ma5']
+                            ma20 = yahoo_data['ma20']
+                            rsi = yahoo_data['rsi']
+                            macd = yahoo_data['macd']
+                            price_above_ma20 = yahoo_data['price_above_ma20']
+                            
+                            logger.info(f"{code}: Yahoo Finance 備援成功")
+                        else:
+                            raise Exception("Yahoo Finance 備援也失敗，無歷史數據")
                     
+                    # ✅ 4. 若使用 FinMind 成功，且尚未計算 change_5d 與 volatility，則在此計算
+                    if not use_yahoo_fallback:
+                        change_5d = round((prices[-1] / prices[-6] - 1) * 100, 2) if (len(prices) >= 6 and prices[-6] != 0) else 0.0
+                        volatility = calculate_volatility(prices)
+
+                    # ✅ 5. 組裝最終的 stock_data（加入 data_source 標記）
                     stock_data = {
                         'code': code,
                         'name': stock['name'],
                         'industry': stock.get('industry', ''),
                         'regime': regime,
-                        'revenue_yoy': revenue.get('yoy_growth', 0),
-                        'inst_buy_days': finmind.get_institutional_buy(code) or 0,
-                        'margin_change': finmind.get_margin_balance(code) or 0,
+                        'revenue_yoy': revenue_yoy,
+                        'gross_margin': gross_margin,
+                        'net_margin': net_margin,
+                        'eps': eps,
+                        'inst_buy_days': inst_buy_days,
+                        'margin_change': margin_change,
                         'change_5d': change_5d,
-                        'volatility': calculate_volatility(prices),
-                        'ex_div_days': '-',
-                        'current_price': prices[-1] if prices else None,
+                        'volatility': volatility,
+                        'ma5': ma5,
+                        'ma20': ma20,
+                        'rsi': rsi,
+                        'macd': macd,
+                        'price_above_ma20': price_above_ma20,
+                        'current_price': float(prices[-1]) if prices else 0.0,
+                        'data_source': 'yahoo' if use_yahoo_fallback else 'finmind',  # ✅ 加入數據來源標記
                     }
-                    analysis = groq.analyze_stock(prompt_tpl, stock_data) or {}
-                    record = {**stock_data, **analysis,
-                              'risk_level': assess_risk_level(stock_data['volatility'])}
+                    
+                    # ✅ 6. 呼叫 Groq 分析 (加入容錯)
+                    analysis = groq.analyze_stock(prompt_tpl, stock_data)
+                    if not analysis:
+                        logger.warning(f"{code} AI 分析失敗，使用預設值")
+                        analysis = {
+                            'ev_score': 50,
+                            'recommendation': '觀望',
+                            'reason': f"AI 分析失敗，請手動檢視 {stock['name']} 數據"
+                        }
+                    
+                    record = {**stock_data, **analysis, 'risk_level': assess_risk_level(volatility)}
                     all_results.append(record)
 
-                    # 🔴 修正：記憶體中 Append (不再每次寫入檔案)
+                    # ✅ 7. 記憶體中 Append
                     telemetry_data['records'].append({
                         'id': f"{now.strftime('%Y%m%d')}-{code}",
                         'timestamp': now.isoformat(),
                         'stock_code': code,
                         'stock_name': stock['name'],
-                        'prompt_version': current_prompt_version,  # 🔴 修正：動態版本
+                        'prompt_version': current_prompt_version,
                         'model': groq.model,
                         'regime': regime,
                         'input': stock_data,
@@ -302,8 +388,9 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         'entry_price': prices[-1] if prices else None,
                     })
                     logger.info(f"{code} 分析完成：EV={analysis.get('ev_score')}")
+                    
                 except Exception as e:
-                    logger.error(f"分析 {code} 失敗：{e}")
+                    logger.error(f"分析 {code} 完全失敗：{e}")
                     failed_count += 1
             
             # 🔴 修正：一次性寫入 telemetry (批次處理)

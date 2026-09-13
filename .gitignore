@@ -2,62 +2,30 @@
 # Compiled and build artifacts
 *.pyc
 __pycache__/
-*.o
-*.obj
 
 # Dependencies
 .venv/
 venv/
-node_modules/
-
-# Logs and temp files
-logs/
-*.log
-*.tmp
-*.swp
-
-# Environment
 .env
 .env.local
 .env.*
-*.key
-*.pem
-*.crt
-secrets.json
-credentials.json
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
 
 # Editors
 .vscode/
 .idea/
 
-# Test and coverage
-.mypy_cache/
-.pytest_cache/
+# Coverage reports
+.coverage
 coverage/
 htmlcov/
-.coverage
 
-# Distribution artifacts
+# Distribution / packaging
 dist/
 build/
-target/
-.gradle/
-
-# Python specific
-*.pyo
-*.pyd
-*.so
 *.egg-info/
-.Python
-*.egg
-
-# Backup files
-*~
-*.bak
-*.swp
-*.swo
-
-# OS generated files
-.DS_Store
-Thumbs.db
 ```
