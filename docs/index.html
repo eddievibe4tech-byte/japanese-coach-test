@@ -372,10 +372,10 @@
                         // 🔴 修正：安全地取得準確率狀態
                         let accText = '⏳ 待驗證';
                         let accClass = 'text-gray-500';
-                        if (record.accuracy === 1) {
+                        if (record.accuracy === 1 || record.accuracy === 80 || record.accuracy === 100) {
                             accText = '✅ 正確';
                             accClass = 'text-green-600 font-bold';
-                        } else if (record.accuracy === 0) {
+                        } else if (record.accuracy === 0 || record.accuracy === 20) {
                             accText = '❌ 錯誤';
                             accClass = 'text-red-600 font-bold';
                         }
