@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from src.finmind_client import FinMindClient
 from src.groq_client import GroqClient
 from src.risk_calculator import calculate_volatility, assess_risk_level
+from src.yahoo_client import YahooFinanceClient
 
 # 載入環境變數
 load_dotenv()
@@ -164,18 +165,71 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
         if stocks:
             finmind = FinMindClient()
             groq = GroqClient()
+            yahoo = YahooFinanceClient()  # ✅ 初始化備援客戶端
             prompt_tpl = (BASE_DIR / 'prompts' / 'main_analysis.txt').read_text(encoding='utf-8')
             regime = '震盪'  # 進階可改呼叫 groq.judge_regime(market_data)
             
             for stock in stocks:
                 code = stock['code']
                 try:
-                    prices = finmind.get_stock_price(code) or []
-                    revenue = finmind.get_revenue(code) or {}
+                    # ✅ 主力使用 FinMind，失敗時切換到 Yahoo Finance
+                    use_yahoo_fallback = False
+                    prices = []
+                    revenue = {}
+                    financials = {}
+                    technicals = {}
                     
-                    # ✅ 新增：抓取財報與技術指標
-                    financials = finmind.get_financial_statements(code) or {}
-                    technicals = finmind.get_technical_indicators(code)
+                    # 1. 嘗試使用 FinMind (主力)
+                    try:
+                        prices = finmind.get_stock_price(code) or []
+                        revenue = finmind.get_revenue(code) or {}
+                        
+                        # 財報數據加入容錯（失敗時使用預設值）
+                        try:
+                            financials = finmind.get_financial_statements(code) or {}
+                        except Exception as e:
+                            logger.warning(f"{code} 財報數據抓取失敗，使用預設值：{e}")
+                            financials = {
+                                'gross_margin': 0,
+                                'net_margin': 0,
+                                'eps': 0,
+                            }
+                        
+                        # 技術指標加入容錯
+                        try:
+                            technicals = finmind.get_technical_indicators(code)
+                        except Exception as e:
+                            logger.warning(f"{code} 技術指標計算失敗：{e}")
+                            technicals = {'ma5': 0, 'ma20': 0, 'rsi': 50, 'macd': 0, 'price_above_ma20': False}
+                        
+                        logger.info(f"{code}: 使用 FinMind 數據成功")
+                        
+                    except Exception as e:
+                        # 2. FinMind 失敗 (422/429)，切換到 Yahoo (備援)
+                        logger.warning(f"{code}: FinMind 失敗 ({e})，切換至 Yahoo Finance 備援")
+                        use_yahoo_fallback = True
+                        
+                        yahoo_data = yahoo.get_stock_data(code)
+                        if yahoo_data:
+                            prices = yahoo_data['prices']
+                            # 將 Yahoo 計算好的指標直接填入
+                            technicals = {
+                                'ma5': yahoo_data['ma5'],
+                                'ma20': yahoo_data['ma20'],
+                                'rsi': yahoo_data['rsi'],
+                                'macd': yahoo_data['macd'],
+                                'price_above_ma20': yahoo_data['price_above_ma20'],
+                            }
+                            # 籌碼面數據若 FinMind 失敗，則設為預設值
+                            revenue = {'yoy_growth': 0}
+                            financials = {
+                                'gross_margin': 0,
+                                'net_margin': 0,
+                                'eps': 0,
+                            }
+                            logger.info(f"{code}: Yahoo Finance 備援成功")
+                        else:
+                            raise Exception("Yahoo Finance 備援也失敗")
                     
                     # 🔴 修正：除以零風險防護
                     change_5d = round((prices[-1] / prices[-6] - 1) * 100, 2) if (len(prices) >= 6 and prices[-6] != 0) else 0.0
@@ -190,9 +244,9 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         'gross_margin': financials.get('gross_margin', 0),
                         'net_margin': financials.get('net_margin', 0),
                         'eps': financials.get('eps', 0),
-                        # 籌碼面數據
-                        'inst_buy_days': finmind.get_institutional_buy(code) or 0,
-                        'margin_change': finmind.get_margin_balance(code) or 0,
+                        # 籌碼面數據 (Yahoo 不支援，設為 0)
+                        'inst_buy_days': finmind.get_institutional_buy(code) if not use_yahoo_fallback else 0,
+                        'margin_change': finmind.get_margin_balance(code) if not use_yahoo_fallback else 0,
                         # 技術面數據
                         'change_5d': change_5d,
                         'volatility': calculate_volatility(prices),
