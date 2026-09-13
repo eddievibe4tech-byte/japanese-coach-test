@@ -1,0 +1,11 @@
+{
+  "current_regime": "震盪",
+  "trade_size": 5000,
+  "target_rr": 2,
+  "max_positions": 3,
+  "max_risk_percent": 2,
+  "industry_limit_percent": 40,
+  "leverage_limit": 5,
+  "volatility_limit": 30,
+  "last_updated": ""
+}
