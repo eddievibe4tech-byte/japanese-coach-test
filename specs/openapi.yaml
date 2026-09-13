@@ -133,7 +133,10 @@ components:
       properties:
         current_regime:
           type: string
-          enum: [多頭，震盪，空頭]
+          enum:
+            - "多頭"
+            - "震盪"
+            - "空頭"
         trade_size:
           type: integer
           example: 5000
@@ -231,14 +234,21 @@ components:
           type: number
         risk_level:
           type: string
-          enum: [🟢 低風險，🟡 中風險，🟠 高風險，🔴 極高風險]
+          enum:
+            - "🟢 低風險"
+            - "🟡 中風險"
+            - "🟠 高風險"
+            - "🔴 極高風險"
         ev_score:
           type: integer
           minimum: 0
           maximum: 100
         recommendation:
           type: string
-          enum: [積極買入，觀望，避開]
+          enum:
+            - "積極買入"
+            - "觀望"
+            - "避開"
         warrant_condition:
           type: string
 
@@ -259,7 +269,10 @@ components:
           maximum: 100
         risk_status:
           type: string
-          enum: [✅ 安全，🟡 注意，🔴 危險]
+          enum:
+            - "✅ 安全"
+            - "🟡 注意"
+            - "🔴 危險"
         warnings:
           type: array
           items:
@@ -360,3 +373,13 @@ components:
         last_updated:
           type: string
           format: date-time
+
+  securitySchemes:
+    GithubTokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "Bearer <your_github_token> 或 token <your_github_token>"
+
+security:
+  - GithubTokenAuth: []

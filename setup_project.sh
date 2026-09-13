@@ -288,6 +288,34 @@ PROMPT_EOF
 echo "✅ Prompt 模板建立完成"
 
 # ============================================
+# 6. .env.example 範本
+# ============================================
+
+cat > .env.example << 'EOF'
+# ============================================
+# 狙擊手系統 - 環境變數設定
+# ============================================
+
+# AI API 金鑰 (例如 OpenAI 或 Gemini)
+AI_API_KEY=your_ai_api_key_here
+AI_MODEL_NAME=gpt-4o
+
+# GitHub Token (用於 GitHub Actions 寫回 Repo 數據)
+# 若使用 GitHub Actions 內建 Token，此欄位可留空
+GH_TOKEN=your_github_pat_here
+
+# 系統設定 (非敏感但可動態調整的參數)
+OPTIMIZATION_THRESHOLD=5
+GITHUB_OWNER=your-username
+GITHUB_REPO=sniper-system
+EOF
+
+# 確保 .env 被忽略，但 .env.example 可以提交
+echo ".env" >> .gitignore
+
+echo "✅ .env.example 建立完成"
+
+# ============================================
 # 提示訊息
 # ============================================
 
@@ -305,7 +333,11 @@ echo "  data/           - 數據文件"
 echo "  prompts/        - Prompt 模板"
 echo ""
 echo "📋 下一步："
-echo "  1. pip install -r requirements-dev.txt"
-echo "  2. pytest tests/unit/ -v"
-echo "  3. behave"
+echo "  1. cp .env.example .env (並填寫真實值)"
+echo "  2. pip install -r requirements-dev.txt"
+echo "  3. pytest tests/unit/ -v"
+echo "  4. behave"
+echo ""
+echo "⚠️ 記得在 GitHub Settings 中設定 Secrets:"
+echo "  AI_API_KEY, GH_TOKEN"
 echo "============================================"

@@ -1,0 +1,35 @@
+name: Weekly Prompt Optimization
+
+on:
+  schedule:
+    - cron: '0 2 * * 0' # 每週日 UTC 時間凌晨 2 點執行
+  workflow_dispatch:
+
+permissions:
+  contents: write # ⚠️ 重要：允許 Workflow 寫回 data/*.json 與 prompts/ 檔案
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run Optimization
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO: ${{ github.event.repository.name }}
+          # 將非敏感的設定檔參數也環境變數化
+          OPTIMIZATION_THRESHOLD: 5 
+        run: |
+          python -m src.optimize_prompt
