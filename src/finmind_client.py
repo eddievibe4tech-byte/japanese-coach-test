@@ -1,6 +1,6 @@
 """
 FinMind API 客戶端模組
-提供台股數據抓取功能：營收、投信籌碼、融資餘額等
+提供台股數據抓取功能：營收、投信籌碼、融資餘額、財報、技術指標等
 """
 import os
 import logging
@@ -205,3 +205,99 @@ class FinMindClient:
             prices.append(close_price)
         
         return prices
+    
+    def get_financial_statements(self, code: str, days: int = 365) -> Optional[Dict]:
+        """
+        抓取財報數據（營收、毛利率、淨利率）
+        
+        Args:
+            code: 股票代號
+            days: 日期範圍天數
+            
+        Returns:
+            包含最新財報數據的字典
+        """
+        data = self._make_request('FinancialStatements', code, days=days)
+        if not data:
+            return None
+        
+        # 取最近一季財報
+        latest = data[-1]
+        revenue = latest.get('Revenue', 0) or 0
+        gross_profit = latest.get('GrossProfit', 0) or 0
+        net_income = latest.get('NetIncome', 0) or 0
+        eps = latest.get('BasicEarningsPerShare', 0) or 0
+        
+        return {
+            'revenue': revenue,
+            'gross_margin': (gross_profit / revenue * 100) if revenue > 0 else 0,
+            'net_margin': (net_income / revenue * 100) if revenue > 0 else 0,
+            'eps': eps,
+        }
+    
+    def get_technical_indicators(self, code: str) -> Dict:
+        """
+        計算技術指標（MA、RSI、MACD）
+        
+        Args:
+            code: 股票代號
+            
+        Returns:
+            包含技術指標的字典
+        """
+        prices = self.get_stock_price(code, days=60) or []
+        if len(prices) < 20:
+            return {'ma5': 0, 'ma20': 0, 'rsi': 50, 'macd': 0, 'price_above_ma20': False}
+        
+        # 計算移動平均線
+        ma5 = sum(prices[-5:]) / 5
+        ma20 = sum(prices[-20:]) / 20
+        
+        # 計算 RSI（14 日）
+        rsi = self._calculate_rsi(prices, period=14)
+        
+        # 計算 MACD
+        macd = self._calculate_macd(prices)
+        
+        return {
+            'ma5': round(ma5, 2),
+            'ma20': round(ma20, 2),
+            'rsi': round(rsi, 2),
+            'macd': round(macd, 2),
+            'price_above_ma20': prices[-1] > ma20,
+        }
+    
+    def _calculate_rsi(self, prices: List[float], period: int = 14) -> float:
+        """計算 RSI 指標"""
+        if len(prices) < period + 1:
+            return 50.0
+        
+        changes = [prices[i] - prices[i-1] for i in range(-period, 0)]
+        gains = [c for c in changes if c > 0]
+        losses = [-c for c in changes if c < 0]
+        
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+        
+        if avg_loss == 0:
+            return 100.0
+        
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+    
+    def _calculate_macd(self, prices: List[float]) -> float:
+        """計算 MACD（簡化版）"""
+        if len(prices) < 26:
+            return 0.0
+        
+        ema12 = self._ema(prices[-12:], 12)
+        ema26 = self._ema(prices[-26:], 26)
+        return ema12 - ema26
+    
+    def _ema(self, prices: List[float], period: int) -> float:
+        """計算指數移動平均線"""
+        multiplier = 2 / (period + 1)
+        ema = sum(prices) / len(prices)
+        for price in prices:
+            ema = (price - ema) * multiplier + ema
+        return ema
