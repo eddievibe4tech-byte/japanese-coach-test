@@ -1,0 +1,10 @@
+{
+  "analyzed_at": "2024-01-01T00:00:00+08:00",
+  "regime": "震盪",
+  "high_score_targets": [],
+  "all_results": [],
+  "metadata": {
+    "description": "深度分析結果，包含所有股票的 EV 評分與推薦標的",
+    "note": "此檔案將在下次 workflow 執行時被更新"
+  }
+}
