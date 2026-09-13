@@ -22,9 +22,17 @@
 - 距除息天數：{ex_div_days}天
 
 【輸出要求】
-請僅輸出以下 JSON 格式，不要輸出其他內容：
+請嚴格輸出以下 JSON 格式，不要輸出任何其他文字或 Markdown 標記：
+
 {
-  "ev_score": "0-100",
-  "recommendation": "積極買入/觀望/避開",
-  "reason": "50 字內"
+  "ev_score": 數字 (0-100),
+  "recommendation": "積極買入" 或 "觀望" 或 "避開",
+  "reason": "50 字內的簡短理由"
 }
+
+✅ 正確範例：
+{"ev_score": 85, "recommendation": "積極買入", "reason": "營收成長強勁，投信連買"}
+
+❌ 錯誤範例：
+好的，這是我的分析：
+{...}

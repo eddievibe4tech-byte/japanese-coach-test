@@ -31,13 +31,13 @@ class GroqClient:
         self.max_retries = 3
         self.retry_delay = 2.0
     
-    def _make_request(self, messages: list, temperature: float = 0.6) -> Optional[Dict]:
+    def _make_request(self, messages: list, temperature: float = 0.3) -> Optional[Dict]:
         """
         發送 API 請求到 Groq
         
         Args:
             messages: 對話訊息列表
-            temperature: 溫度參數（Qwen 推薦 0.6）
+            temperature: 溫度參數（降低至 0.3 讓輸出更穩定）
             
         Returns:
             API 回應資料，失敗時返回 None
@@ -57,9 +57,9 @@ class GroqClient:
         payload = {
             "model": self.model,  # 例如 "qwen/qwen3.6-27b"
             "messages": messages,
-            "temperature": temperature,  # ✅ Qwen 推薦的溫度
-            "max_tokens": 2048,  # ✅ 增加 tokens 限制
-            "response_format": {"type": "json_object"}  # 強制輸出 JSON
+            "temperature": temperature,  # ✅ 降低溫度，讓輸出更穩定
+            "max_tokens": 2048,
+            # ✅ 移除 response_format，讓模型自由輸出（Qwen 對嚴格 JSON 支援不佳）
         }
 
         for attempt in range(self.max_retries):
@@ -122,23 +122,22 @@ class GroqClient:
         
         content = response_data['choices'][0]['message']['content']
         
-        # 解析 JSON 回應
+        # 解析 JSON 回應 - 加入容錯機制
         try:
-            # 清理可能的 markdown 標記
+            # ✅ 從回應中提取 JSON（移除可能的 Markdown 標記）
             content = content.strip()
             if content.startswith('```json'):
-                content = content[7:]
-            if content.endswith('```'):
-                content = content[:-3]
-            content = content.strip()
+                content = content.split('```json')[1].split('```')[0].strip()
+            elif content.startswith('```'):
+                content = content.split('```')[1].split('```')[0].strip()
             
             result = json.loads(content)
             
-            # 驗證必要欄位
+            # ✅ 驗證必要欄位
             required_fields = ['ev_score', 'recommendation', 'reason']
             for field in required_fields:
                 if field not in result:
-                    print(f"缺少必要欄位：{field}")
+                    logger.warning(f"Groq 回傳缺少必要欄位：{result.keys()}")
                     return None
             
             return {
@@ -149,8 +148,11 @@ class GroqClient:
             }
             
         except json.JSONDecodeError as e:
-            print(f"JSON 解析錯誤：{e}")
-            print(f"原始回應：{content}")
+            logger.error(f"JSON 解析失敗：{e}")
+            logger.error(f"原始內容：{content}")
+            return None
+        except Exception as e:
+            logger.error(f"解析 Groq 回應時出錯：{e}")
             return None
     
     def judge_regime(self, market_data: Dict) -> Optional[Dict]:
@@ -197,13 +199,12 @@ class GroqClient:
         content = response_data['choices'][0]['message']['content']
         
         try:
-            # 清理 markdown 標記
+            # ✅ 從回應中提取 JSON（移除可能的 Markdown 標記）
             content = content.strip()
             if content.startswith('```json'):
-                content = content[7:]
-            if content.endswith('```'):
-                content = content[:-3]
-            content = content.strip()
+                content = content.split('```json')[1].split('```')[0].strip()
+            elif content.startswith('```'):
+                content = content.split('```')[1].split('```')[0].strip()
             
             result = json.loads(content)
             
@@ -217,5 +218,9 @@ class GroqClient:
             }
             
         except json.JSONDecodeError as e:
-            print(f"JSON 解析錯誤：{e}")
+            logger.error(f"JSON 解析錯誤：{e}")
+            logger.error(f"原始內容：{content}")
+            return None
+        except Exception as e:
+            logger.error(f"解析 Groq 回應時出錯：{e}")
             return None
