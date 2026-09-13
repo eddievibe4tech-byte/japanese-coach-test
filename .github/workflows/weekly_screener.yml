@@ -1,0 +1,39 @@
+name: Weekly Alpha Screener (週末海選)
+
+on:
+  schedule:
+    # 每週五晚上 19:00 (台北時間 = UTC+8) 執行海選
+    - cron: '0 11 * * 5' 
+  workflow_dispatch:
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install duckduckgo-search pandas
+      
+      - name: Run Screener & AI Due Diligence
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: |
+          cd src
+          python screener.py
+          python news_sentiment.py
+          
+      - name: Commit Candidates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/screener_candidates.json data/ai_dd_reports.json
+          git commit -m "🎯 Weekly Alpha Screener: $(date +'%Y-%m-%d')" || echo "No new candidates"
+          git push
