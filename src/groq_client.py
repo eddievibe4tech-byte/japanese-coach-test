@@ -125,6 +125,13 @@ class GroqClient:
         content = response_data['choices'][0]['message']['content']
         logger.info(f"Groq 回傳內容（前 200 字元）：{content[:200]}...")
         
+        # ✅ 關鍵修正：處理 Qwen 的 <think> 標籤
+        # Qwen 模型會輸出 <think>...</think> 然後才是 JSON
+        if '<think>' in content:
+            # 找到 </think> 之後的內容
+            content = content.split('</think>')[-1].strip()
+            logger.info(f"提取 </think> 後的內容：{content[:200]}...")
+        
         # 解析 JSON 回應 - 加入更寬容的容錯機制
         try:
             # ✅ 從回應中提取 JSON（移除可能的 Markdown 標記）
