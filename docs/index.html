@@ -93,17 +93,22 @@
         // ⚠️ 關鍵修正：將 Chart 實例存為變數，避免重複初始化報錯
         let accuracyChartInstance = null;
 
-        // 簡單的 XSS 防護函數
+        // 簡單的 XSS 防護函數 (🔴 修正：精確判斷 null/undefined，避免誤殺數字 0)
         function escapeHTML(str) {
-            if (!str) return '-';
+            if (str === null || str === undefined) return '-';
             return str.toString().replace(/[&<>"']/g, function(m) {
                 return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m];
             });
         }
 
+        // 🟡 Loading Spinner HTML 模板 (統一 UI)
+        function getLoadingHtml(message) {
+            return `<tr><td colspan="5" class="px-4 py-4 text-center"><div class="loading-spinner"></div> ${message}</td></tr>`;
+        }
+
         async function loadDashboard() {
             const tableBody = document.getElementById('predictions-table');
-            tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center"><div class="loading-spinner"></div> 載入數據中...</td></tr>';
+            tableBody.innerHTML = getLoadingHtml('載入數據中...');
 
             try {
                 // 並行載入兩個 JSON 以提升速度
@@ -112,16 +117,24 @@
                     fetch(TELEMETRY_URL)
                 ]);
 
-                // 處理 Metrics 數據
+                // 處理 Metrics 數據 (🔴 修正：獨立 try-catch，避免 JSON 解析失敗影響其他區塊)
                 let metricsData = null;
                 if (metricsRes.status === 'fulfilled' && metricsRes.value.ok) {
-                    metricsData = await metricsRes.value.json();
+                    try {
+                        metricsData = await metricsRes.value.json();
+                    } catch (e) {
+                        console.warn('performance_metrics.json 解析失敗', e);
+                    }
                 }
 
                 // 處理 Telemetry 數據
                 let telemetryData = null;
                 if (telemetryRes.status === 'fulfilled' && telemetryRes.value.ok) {
-                    telemetryData = await telemetryRes.value.json();
+                    try {
+                        telemetryData = await telemetryRes.value.json();
+                    } catch (e) {
+                        console.warn('telemetry.json 解析失敗', e);
+                    }
                 }
 
                 // 1. 更新卡片數據
@@ -136,7 +149,7 @@
                     document.getElementById('last-updated').innerText = '最後更新時間：暫無數據 (檔案可能尚未生成)';
                 }
 
-                // 2. 繪製圖表 (⚠️ 修正：相容 Object 結構的 version_stats)
+                // 2. 繪製圖表 (⚠️ 修正：相容 Object 結構的 version_stats + 🟡 排序 X 軸版本)
                 const ctx = document.getElementById('accuracyChart').getContext('2d');
                 let labels = [];
                 let accuracyData = [];
@@ -157,6 +170,12 @@
                             const acc = stats.accuracy || (stats.correct / stats.predictions * 100) || 0;
                             accuracyData.push(acc);
                         });
+                        
+                        // 🟡 顯式排序確保趨勢線正確 (V1 -> V2 -> V3...)
+                        let combined = labels.map((label, index) => ({ label, data: accuracyData[index] }));
+                        combined.sort((a, b) => parseInt(a.label.replace('V', '')) - parseInt(b.label.replace('V', '')));
+                        labels = combined.map(c => c.label);
+                        accuracyData = combined.map(c => c.data);
                     }
                 }
 
