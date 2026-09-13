@@ -16,27 +16,28 @@ logger = logging.getLogger(__name__)
 class GroqClient:
     """Groq API 客戶端"""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "llama-3.3-70b-versatile"):
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         """
         初始化 Groq 客戶端
         
         Args:
             api_key: Groq API Key，若未提供則從環境變數 GROQ_API_KEY 讀取
-            model: 使用的模型名稱
+            model: 使用的模型名稱，若未提供則從環境變數 GROQ_MODEL 讀取，預設為 qwen/qwen3.6-27b
         """
         self.api_key = api_key or os.getenv('GROQ_API_KEY', '')
-        self.model = model
+        # ✅ 改用 Qwen 模型，優先從環境變數讀取
+        self.model = model or os.getenv('GROQ_MODEL', 'qwen/qwen3.6-27b')
         self.base_url = 'https://api.groq.com/openai/v1/chat/completions'
         self.max_retries = 3
-        self.retry_delay = 1.0
+        self.retry_delay = 2.0
     
-    def _make_request(self, messages: list, temperature: float = 0.1) -> Optional[Dict]:
+    def _make_request(self, messages: list, temperature: float = 0.6) -> Optional[Dict]:
         """
         發送 API 請求到 Groq
         
         Args:
             messages: 對話訊息列表
-            temperature: 溫度參數
+            temperature: 溫度參數（Qwen 推薦 0.6）
             
         Returns:
             API 回應資料，失敗時返回 None
@@ -54,10 +55,10 @@ class GroqClient:
         }
         
         payload = {
-            "model": self.model,  # 例如 "llama-3.3-70b-versatile"
+            "model": self.model,  # 例如 "qwen/qwen3.6-27b"
             "messages": messages,
-            "temperature": temperature,
-            "max_tokens": 1024,
+            "temperature": temperature,  # ✅ Qwen 推薦的溫度
+            "max_tokens": 2048,  # ✅ 增加 tokens 限制
             "response_format": {"type": "json_object"}  # 強制輸出 JSON
         }
 
@@ -66,13 +67,14 @@ class GroqClient:
                 # ✅ 3. 使用 json=payload 讓 requests 自動處理編碼
                 response = requests.post(url, headers=headers, json=payload, timeout=30)
                 
-                if response.status_code == 404:
-                    # ✅ 關鍵修正：印出 Groq 回傳的具體錯誤訊息與當前使用的模型名稱
-                    logger.error(f"Groq 404 錯誤詳情：{response.text}")
-                    logger.error(f"當前嘗試使用的模型名稱：{self.model}")
+                # ✅ 詳細日誌：幫助除錯
+                if response.status_code != 200:
+                    logger.error(f"Groq API 失敗 (HTTP {response.status_code}):")
+                    logger.error(f"URL: {url}")
+                    logger.error(f"Model: {self.model}")
+                    logger.error(f"Response: {response.text}")  # ← 這會顯示具體錯誤
                     return None
-                    
-                response.raise_for_status()
+                
                 return response.json()
                 
             except Exception as e:
