@@ -71,6 +71,15 @@
             </div>
         </div>
 
+        <!-- 🏆 本週 Alpha 候選股 (Top 15) -->
+        <div class="bg-white border rounded-lg p-4 mb-6">
+            <h2 class="text-xl font-semibold mb-2">🏆 本週 Alpha 候選股 (Top 15)</h2>
+            <p class="text-sm text-gray-500 mb-4">由海選引擎自動篩選：營收成長 &gt; 15%、投信連買 &gt; 3 天、股價站上 MA20</p>
+            <div id="screener-table" class="overflow-x-auto">
+                <p class="loading text-gray-500">載入候選股...</p>
+            </div>
+        </div>
+
         <!-- 🎯 今日 AI 狙擊分析 -->
         <div class="bg-white border rounded-lg p-4 mb-6">
             <h2 class="text-xl font-semibold mb-4">🎯 今日 AI 狙擊分析</h2>
@@ -787,6 +796,56 @@
 
         // 頁面載入完成後執行
         document.addEventListener('DOMContentLoaded', loadDashboard);
+        
+        // 🟡 P2 修正：新增載入 Screener 候選股表格的函數
+        async function loadScreener() {
+            try {
+                const res = await fetch('data/screener_candidates.json');
+                if (!res.ok) throw new Error('No data');
+                const data = await res.json();
+                
+                if (!data.candidates || data.candidates.length === 0) {
+                    document.getElementById('screener-table').innerHTML = '<p class="text-gray-500 text-center py-4">本週無符合條件的候選股。</p>';
+                    return;
+                }
+
+                let html = '<table class="min-w-full divide-y divide-gray-200"><thead><tr>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">代號</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">名稱</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">營收 YoY%</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">投信連買</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">現價 / MA20</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">外部工具</th></tr></thead><tbody>';
+
+                data.candidates.forEach(c => {
+                    const revenueClass = c.revenue_yoy >= 15 ? 'text-green-600 font-bold' : 'text-gray-600';
+                    html += `<tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3 text-sm font-bold">${escapeHTML(c.code)}</td>
+                        <td class="px-4 py-3 text-sm">${escapeHTML(c.name)}</td>
+                        <td class="px-4 py-3 text-sm ${revenueClass}">${c.revenue_yoy}%</td>
+                        <td class="px-4 py-3 text-sm">${c.inst_buy_days} 天</td>
+                        <td class="px-4 py-3 text-sm">${c.current_price} / ${c.ma20}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <a href="https://www.tradingview.com/chart/?symbol=TWSE:${c.code}" target="_blank" class="text-blue-600 hover:underline mr-2">📈 TV</a>
+                            <a href="https://goodinfo.tw/tw/StockDetail.jsp?STOCK_ID=${c.code}" target="_blank" class="text-green-600 hover:underline mr-2">💰 籌碼</a>
+                            <a href="https://www.perplexity.ai/search?q=${encodeURIComponent(c.name + ' ' + c.code + ' 財報 目標價')}" target="_blank" class="text-purple-600 hover:underline">🤖 DD</a>
+                        </td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                document.getElementById('screener-table').innerHTML = html;
+            } catch (e) {
+                console.warn('Screener 資料載入失敗:', e);
+                document.getElementById('screener-table').innerHTML = '<p class="text-gray-500 text-center py-4">暫無篩選結果或尚未執行海選</p>';
+            }
+        }
+        
+        // 在 Dashboard 載入時同時載入 Screener 資料
+        const originalLoadDashboard = loadDashboard;
+        loadDashboard = async function() {
+            await originalLoadDashboard();
+            await loadScreener();
+        };
     </script>
 </body>
 </html>

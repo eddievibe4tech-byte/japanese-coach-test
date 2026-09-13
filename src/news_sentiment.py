@@ -36,7 +36,7 @@ def search_news(stock_code: str, stock_name: str, max_results: int = 5) -> list:
     news_titles = []
     
     try:
-        with DDGS() as ddgs:
+        with DDGS(headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}) as ddgs:
             results = ddgs.news(query, region="tw-tw", max_results=max_results)
             news_titles = [r['title'] for r in results]
             
@@ -72,7 +72,7 @@ def ai_due_diligence(stock_code: str, stock_name: str, news_titles: list = None)
             "conclusion": f"{stock_name} 近期無重大消息，建議參考技術面與籌碼面"
         }
     
-    # 3. 呼叫 Groq 進行深度分析
+    # 3. 呼叫 Groq 進行深度分析 (使用既有的 call_groq_api 函數)
     groq = GroqClient()
     
     prompt = f"""你是一位嚴格的華爾街分析師。請根據以下關於 {stock_name}({stock_code}) 的近期新聞標題，進行盡職調查 (Due Diligence)。
@@ -92,6 +92,7 @@ def ai_due_diligence(stock_code: str, stock_name: str, news_titles: list = None)
   "conclusion": "投資結論"
 }}"""
 
+    # 🔴 P0 修正：使用 GroqClient._make_request 方法（既有介面）
     response = groq._make_request(
         messages=[
             {"role": "system", "content": "你是一位嚴格的華爾街分析師，專精於財報與新聞分析。請僅輸出 JSON 格式。"},
@@ -108,6 +109,7 @@ def ai_due_diligence(stock_code: str, stock_name: str, news_titles: list = None)
         }
     
     try:
+        # 🔴 P0 修正：response 已經是完整的 API 回應，需要解析 choices
         content = response['choices'][0]['message']['content']
         # 清理 Markdown 標記
         clean = content.replace('```json', '').replace('```', '').strip()

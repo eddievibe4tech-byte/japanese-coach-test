@@ -5,6 +5,7 @@
 import pandas as pd
 import json
 import os
+import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from finmind_client import FinMindClient
@@ -28,8 +29,12 @@ def get_all_taiwan_stocks(finmind: FinMindClient) -> List[Dict]:
     Returns:
         股票清單列表
     """
-    # 使用 FinMind 的 TaiwanStockList API
-    data = finmind._make_request('TaiwanStockInfoWithWarrant', 'ALL', days=1) or []
+    # 使用 FinMind 的 TaiwanStockInfo API (修正：TaiwanStockInfoWithWarrant 不存在)
+    try:
+        data = finmind._make_request('TaiwanStockInfo', 'ALL', days=1) or []
+    except Exception as e:
+        print(f"⚠️ 獲取股票清單失敗：{e}，使用預設清單")
+        data = []
     
     stocks = []
     for item in data:
@@ -77,7 +82,7 @@ def run_weekly_screener(finmind: FinMindClient) -> List[Dict]:
             print(f"  處理中：{processed}/{min(200, len(all_stocks))} ({len(candidates)} 檔入選)")
         
         try:
-            # A. 檢查營收年增率
+            # A. 檢查營收年增率 (使用既有的 get_revenue 方法)
             revenue_data = finmind.get_revenue(code)
             if not revenue_data:
                 continue
@@ -85,12 +90,12 @@ def run_weekly_screener(finmind: FinMindClient) -> List[Dict]:
             if rev_yoy < SCREENER_RULES["revenue_yoy_min"]:
                 continue
                 
-            # B. 檢查籌碼（投信連買天數）
+            # B. 檢查籌碼（投信連買天數）(使用既有的 get_institutional_buy 方法)
             inst_days = finmind.get_institutional_buy(code, days=10)
             if inst_days < SCREENER_RULES["inst_buy_days_min"]:
                 continue
                 
-            # C. 檢查技術面 (MA20)
+            # C. 檢查技術面 (MA20) (使用既有的 get_stock_price 方法)
             prices = finmind.get_stock_price(code, days=30)
             if not prices or len(prices) < 20:
                 continue
@@ -115,6 +120,9 @@ def run_weekly_screener(finmind: FinMindClient) -> List[Dict]:
         except Exception as e:
             print(f"  ⚠️ 檢查 {code} 時出錯：{e}")
             continue
+        finally:
+            # 🟠 P1 修正：避免觸發 FinMind API Rate Limit (每 1.5 秒呼叫一次)
+            time.sleep(1.5)
     
     # 排序：營收成長最強 + 籌碼最乾淨的排前面
     candidates.sort(key=lambda x: (x['revenue_yoy'], x['inst_buy_days']), reverse=True)

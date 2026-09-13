@@ -28,6 +28,11 @@ jobs:
         run: |
           cd src
           python screener.py
+          # 🟢 P3 修正：檢查 screener 是否有產出檔案，若無則中斷 workflow
+          if [ ! -f ../data/screener_candidates.json ]; then
+            echo "❌ Screener failed to produce candidates. Aborting."
+            exit 1
+          fi
           python news_sentiment.py
           
       - name: Commit Candidates
