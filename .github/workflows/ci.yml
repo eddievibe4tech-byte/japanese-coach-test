@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Data health check - validate all JSON files
+  data-health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate all data JSONs
+        run: |
+          python - <<'EOF'
+          import json, glob, sys
+          ok = True
+          for f in glob.glob('data/*.json'):
+              try:
+                  json.load(open(f, encoding='utf-8'))
+                  print('OK  ', f)
+              except Exception as e:
+                  ok = False; print('FAIL', f, e)
+          sys.exit(0 if ok else 1)
+          EOF
+
+  # Pages layout guard - prevent regression on publish structure
+  pages-layout-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert Pages layout (index.html at root, no docs/index.html except stub)
+        run: |
+          # Check index.html exists at root
+          if [ ! -f index.html ]; then
+            echo "❌ index.html must be at repo root"
+            exit 1
+          fi
+          echo "✅ index.html exists at root"
+          
+          # Check docs/index.html is either missing or is a redirect stub
+          if [ -f docs/index.html ]; then
+            if grep -q 'http-equiv="refresh"' docs/index.html; then
+              echo "✅ docs/index.html is a valid redirect stub"
+            else
+              echo "❌ docs/index.html should only exist as a redirect stub"
+              exit 1
+            fi
+          else
+            echo "✅ docs/index.html does not exist (ok)"
+          fi
+          
+          # Validate all data JSONs
+          python -c "import json,glob,sys; [json.load(open(f,encoding='utf-8')) for f in glob.glob('data/*.json')]; print('✅ data JSONs valid')"
+
+  # Unit tests
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ -v
