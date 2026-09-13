@@ -31,6 +31,86 @@
       "topic": "高利率受惠",
       "ex_div_date": "",
       "notes": "金融股"
+    },
+    {
+      "code": "2317",
+      "name": "鴻海",
+      "industry": "電子",
+      "topic": "AI 伺服器",
+      "ex_div_date": "",
+      "notes": "與台積電連動但節奏不同"
+    },
+    {
+      "code": "2382",
+      "name": "廣達",
+      "industry": "電子",
+      "topic": "AI 伺服器",
+      "ex_div_date": "",
+      "notes": "伺服器出貨指標"
+    },
+    {
+      "code": "3711",
+      "name": "日月光投控",
+      "industry": "半導體",
+      "topic": "先進封裝",
+      "ex_div_date": "",
+      "notes": "CoWoS 外溢受益"
+    },
+    {
+      "code": "3017",
+      "name": "奇鋐",
+      "industry": "電子",
+      "topic": "AI 散熱",
+      "ex_div_date": "",
+      "notes": "AI 散熱高波動題材"
+    },
+    {
+      "code": "1504",
+      "name": "東元",
+      "industry": "重電",
+      "topic": "電力",
+      "ex_div_date": "",
+      "notes": "與科技股連動低"
+    },
+    {
+      "code": "1519",
+      "name": "華城",
+      "industry": "重電",
+      "topic": "電網更新",
+      "ex_div_date": "",
+      "notes": "電網更新題材"
+    },
+    {
+      "code": "2303",
+      "name": "聯電",
+      "industry": "半導體",
+      "topic": "成熟製程",
+      "ex_div_date": "",
+      "notes": "半導體但循環位置不同"
+    },
+    {
+      "code": "2882",
+      "name": "國泰金",
+      "industry": "金融",
+      "topic": "金融股",
+      "ex_div_date": "",
+      "notes": "金融評量尺測試組"
+    },
+    {
+      "code": "2412",
+      "name": "中華電",
+      "industry": "電信",
+      "topic": "防禦型",
+      "ex_div_date": "",
+      "notes": "低波動對照組"
+    },
+    {
+      "code": "2002",
+      "name": "中鋼",
+      "industry": "傳產",
+      "topic": "循環股",
+      "ex_div_date": "",
+      "notes": "觀察循環股轉折"
     }
   ]
 }

@@ -88,6 +88,41 @@ class GroqClient:
             rendered = rendered.replace('{' + key + '}', str(value))
         return rendered
     
+    def _clean_stock_data(self, stock_data: Dict) -> Dict:
+        """
+        🔴 P0 修正：清理股票數據，處理缺失值
+        
+        【數據缺失處理規則】（最高優先）
+        - 任何欄位為 "-"、null、空字串時：
+          1. 絕對不得視為 0 或負面證據
+          2. 僅用「有值的欄位」評分
+          3. 在理由末尾標註「缺失欄位：xx」
+        - 只有當欄位「有值且為零或負」時，才可作為負面證據
+        
+        Args:
+            stock_data: 原始股票數據字典
+            
+        Returns:
+            清理後的數據字典
+        """
+        cleaned = {}
+        missing_fields = []
+        
+        for key, value in stock_data.items():
+            # 檢查是否為缺失值
+            if value is None or value == '-' or value == '':
+                missing_fields.append(key)
+                # 標記為「數據缺失」而非 0
+                cleaned[key] = '數據缺失'
+            else:
+                cleaned[key] = value
+        
+        # 若有缺失欄位，加入標註
+        if missing_fields:
+            cleaned['_missing_fields'] = missing_fields
+        
+        return cleaned
+    
     def analyze_stock(self, prompt_template: str, stock_data: Dict) -> Optional[Dict]:
         """
         分析股票並返回評分與建議
@@ -99,8 +134,11 @@ class GroqClient:
         Returns:
             包含 EV 評分、建議、原因的字典
         """
+        # 🔴 P0 修正：在發送給 AI 前，先處理缺失數據
+        cleaned_data = self._clean_stock_data(stock_data)
+        
         # 渲染 Prompt 模板（使用安全替換）
-        prompt = self._render_template(prompt_template, stock_data)
+        prompt = self._render_template(prompt_template, cleaned_data)
         
         messages = [
             {
