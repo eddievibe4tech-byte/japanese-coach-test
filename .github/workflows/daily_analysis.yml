@@ -50,8 +50,8 @@ jobs:
           branch: main
           commit_user_name: "Sniper Bot"
           commit_user_email: "bot@sniper-system.com"
-          # ✅ 只提交狀態檔與 Prompt，Log 交給 Artifacts 保存
-          file_pattern: 'data/*.json prompts/*.txt results/*.json'
+          # ✅ 使用 '.' 提交所有追蹤中的檔案，依賴 .gitignore 排除 Log 與快取
+          file_pattern: '.'
 
       - name: Upload Analysis Results (Backup)
         uses: actions/upload-artifact@v4
