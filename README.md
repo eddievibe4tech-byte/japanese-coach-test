@@ -731,7 +731,9 @@ jobs:
           git push
 ```
 
-### 每週優化（`weekly-optimization.yml`）
+### 每週優化（可選擴展）
+
+若需要實作每週 Prompt 自動優化功能，可參考以下範例：
 
 ```yaml
 name: Weekly Prompt Optimization
@@ -741,27 +743,33 @@ on:
     - cron: '0 12 * * 0'  # UTC 12:00 = 台北 20:00（週日）
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   optimize:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install requests
-      - run: cd src && python prompt_optimizer.py
+      
+      - run: pip install -r requirements.txt
+      
+      - run: python src/prompt_optimizer.py
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      - run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add data/*.json prompts/*.txt
-          git commit -m "🔧 Prompt optimization: $(date +'%Y-%m-%d')" || echo "No changes"
-          git push
+      
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: prompt optimization update [skip ci]"
+          branch: main
+          file_pattern: 'data/*.json prompts/*.txt'
 ```
 
 ---
