@@ -50,37 +50,36 @@ class YahooFinanceClient:
             ma5 = hist['Close'].rolling(window=5).mean().iloc[-1]
             ma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
             
-            # 計算 RSI (14)
+            # 計算 RSI (14) 並處理 loss=0 的情況
             delta = hist['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            rsi = 100 - (100 / (1 + rs)).iloc[-1]
+            
+            # 避免除以零，使用 fillna(0) 處理極端情況
+            rs = (gain / loss).fillna(0)
+            rsi = float((100 - (100 / (1 + rs))).iloc[-1])
             
             # 計算 MACD
             ema12 = hist['Close'].ewm(span=12, adjust=False).mean()
             ema26 = hist['Close'].ewm(span=26, adjust=False).mean()
-            macd = (ema12 - ema26).iloc[-1]
+            macd = float((ema12 - ema26).iloc[-1])
             
             # 計算波動率 (年化)
             returns = hist['Close'].pct_change().dropna()
-            volatility = returns.std() * (252 ** 0.5) * 100
+            volatility = float(returns.std() * (252 ** 0.5) * 100)
             
             # 計算 5 日漲跌幅
-            if len(prices) >= 6:
-                change_5d = ((prices[-1] / prices[-6]) - 1) * 100
-            else:
-                change_5d = 0.0
+            change_5d = float(((prices[-1] / prices[-6]) - 1) * 100) if len(prices) >= 6 and prices[-6] != 0 else 0.0
                 
             return {
                 'prices': prices,
-                'current_price': last_price,
+                'current_price': float(last_price),
                 'ma5': float(ma5),
                 'ma20': float(ma20),
-                'rsi': float(rsi),
-                'macd': float(macd),
-                'volatility': float(volatility),
-                'change_5d': float(change_5d),
+                'rsi': rsi,
+                'macd': macd,
+                'volatility': volatility,
+                'change_5d': change_5d,
                 'price_above_ma20': bool(last_price > ma20),
             }
             
@@ -100,11 +99,12 @@ class YahooFinanceClient:
         """
         try:
             ticker = yf.Ticker(f"{code}.TW")
-            info = ticker.info
+            # ⚠️ 注意：ticker.info 有時會超時，若不需要可暫時註解掉此方法
+            info = ticker.info or {}
             return {
-                'eps': info.get('trailingEps', 0),
-                'pe_ratio': info.get('trailingPE', 0),
-                'market_cap': info.get('marketCap', 0),
+                'eps': float(info.get('trailingEps', 0) or 0),
+                'pe_ratio': float(info.get('trailingPE', 0) or 0),
+                'market_cap': float(info.get('marketCap', 0) or 0),
             }
         except Exception as e:
             logger.warning(f"Yahoo Finance 財報資訊抓取失敗：{e}")
