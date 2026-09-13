@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-09-13T14:43:28.868277+08:00",
+  "mode": "full",
+  "status": "success",
+  "data": {
+    "stock_analysis": {
+      "analyzed_at": "2026-09-13T14:43:28.868277+08:00",
+      "regime": "震盪",
+      "high_score_targets": [],
+      "all_results": [
+        {
+          "code": "2330",
+          "name": "台積電",
+          "industry": "半導體",
+          "regime": "震盪",
+          "revenue_yoy": 10.1,
+          "inst_buy_days": 0,
+          "margin_change": 0,
+          "change_5d": 0.0,
+          "volatility": 18.83,
+          "ex_div_days": "-",
+          "risk_level": "🟡 中風險"
+        },
+        {
+          "code": "2308",
+          "name": "台達電",
+          "industry": "電子",
+          "regime": "震盪",
+          "revenue_yoy": -3.71,
+          "inst_buy_days": 0,
+          "margin_change": 0,
+          "change_5d": -11.23,
+          "volatility": 49.29,
+          "ex_div_days": "-",
+          "risk_level": "🔴 極高風險"
+        },
+        {
+          "code": "2454",
+          "name": "聯發科",
+          "industry": "半導體",
+          "regime": "震盪",
+          "revenue_yoy": 32.41,
+          "inst_buy_days": 1,
+          "margin_change": 0,
+          "change_5d": 3.85,
+          "volatility": 58.82,
+          "ex_div_days": "-",
+          "risk_level": "🔴 極高風險"
+        },
+        {
+          "code": "2881",
+          "name": "富邦金",
+          "industry": "金融",
+          "regime": "震盪",
+          "revenue_yoy": -51.89,
+          "inst_buy_days": 0,
+          "margin_change": 0,
+          "change_5d": -1.33,
+          "volatility": 36.62,
+          "ex_div_days": "-",
+          "risk_level": "🟠 高風險"
+        }
+      ]
+    }
+  }
+}

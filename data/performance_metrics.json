@@ -1,0 +1,14 @@
+{
+  "total_predictions": 4,
+  "accuracy_rate": 0.0,
+  "current_version": 1,
+  "last_updated": "2026-09-13T14:43:45.005480+08:00",
+  "version_stats": [
+    {
+      "version": 1,
+      "predictions": 4,
+      "correct": 0,
+      "accuracy": 0.0
+    }
+  ]
+}
