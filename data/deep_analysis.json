@@ -1,5 +1,5 @@
 {
-  "analyzed_at": "2026-09-13T16:29:19.773089+08:00",
+  "analyzed_at": "2026-09-13T16:55:47.929344+08:00",
   "regime": "震盪",
   "high_score_targets": [],
   "all_results": [
@@ -9,9 +9,9 @@
       "industry": "半導體",
       "regime": "震盪",
       "revenue_yoy": 10.1,
-      "gross_margin": 0,
-      "net_margin": 0,
-      "eps": 0,
+      "gross_margin": 0.0,
+      "net_margin": 0.0,
+      "eps": 0.0,
       "inst_buy_days": 0,
       "margin_change": 427,
       "change_5d": 0.0,
@@ -24,8 +24,7 @@
       "current_price": 2410.0,
       "ev_score": 50,
       "recommendation": "觀望",
-      "reason": "AI 分析失敗，請手動檢視 台積電 的技術面與籌碼面數據",
-      "raw_response": null,
+      "reason": "AI 分析失敗，請手動檢視 台積電 數據",
       "risk_level": "🟡 中風險"
     },
     {
@@ -34,9 +33,9 @@
       "industry": "電子",
       "regime": "震盪",
       "revenue_yoy": -3.71,
-      "gross_margin": 0,
-      "net_margin": 0,
-      "eps": 0,
+      "gross_margin": 0.0,
+      "net_margin": 0.0,
+      "eps": 0.0,
       "inst_buy_days": 0,
       "margin_change": 91,
       "change_5d": -11.23,
@@ -49,8 +48,7 @@
       "current_price": 1620.0,
       "ev_score": 50,
       "recommendation": "觀望",
-      "reason": "AI 分析失敗，請手動檢視 台達電 的技術面與籌碼面數據",
-      "raw_response": null,
+      "reason": "AI 分析失敗，請手動檢視 台達電 數據",
       "risk_level": "🔴 極高風險"
     },
     {
@@ -59,9 +57,9 @@
       "industry": "半導體",
       "regime": "震盪",
       "revenue_yoy": 32.41,
-      "gross_margin": 0,
-      "net_margin": 0,
-      "eps": 0,
+      "gross_margin": 0.0,
+      "net_margin": 0.0,
+      "eps": 0.0,
       "inst_buy_days": 1,
       "margin_change": -102,
       "change_5d": 3.85,
@@ -74,8 +72,7 @@
       "current_price": 4585.0,
       "ev_score": 50,
       "recommendation": "觀望",
-      "reason": "AI 分析失敗，請手動檢視 聯發科 的技術面與籌碼面數據",
-      "raw_response": null,
+      "reason": "AI 分析失敗，請手動檢視 聯發科 數據",
       "risk_level": "🔴 極高風險"
     },
     {
@@ -84,9 +81,9 @@
       "industry": "金融",
       "regime": "震盪",
       "revenue_yoy": -51.89,
-      "gross_margin": 0,
-      "net_margin": 0,
-      "eps": 0,
+      "gross_margin": 0.0,
+      "net_margin": 0.0,
+      "eps": 0.0,
       "inst_buy_days": 0,
       "margin_change": -165,
       "change_5d": -1.33,
@@ -99,8 +96,7 @@
       "current_price": 148.5,
       "ev_score": 50,
       "recommendation": "觀望",
-      "reason": "AI 分析失敗，請手動檢視 富邦金 的技術面與籌碼面數據",
-      "raw_response": null,
+      "reason": "AI 分析失敗，請手動檢視 富邦金 數據",
       "risk_level": "🟠 高風險"
     }
   ]
