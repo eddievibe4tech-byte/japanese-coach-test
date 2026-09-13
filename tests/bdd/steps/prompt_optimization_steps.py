@@ -62,7 +62,7 @@ def step_impl(context, filename):
 
 
 @given('過去 14 天只有 {count} 筆已回填結果的預測記錄')
-def step_impl(context, count):
+def step_impl_only(context, count):
     context.prediction_count = int(count)
 
 
@@ -79,11 +79,6 @@ def step_impl(context):
 @then('Prompt 版本應該維持不變')
 def step_impl(context):
     assert context.new_version == context.current_version
-
-
-@given('過去 14 天有 {count} 筆已回填結果的預測記錄')
-def step_impl(context, count):
-    context.prediction_count = int(count)
 
 
 @given('AI API 呼叫失敗')
