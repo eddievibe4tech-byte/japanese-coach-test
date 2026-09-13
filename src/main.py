@@ -70,6 +70,57 @@ def load_config(config_path: str = 'stock_pool.json') -> Dict:
         return {"stocks": [], "sectors": {}}
 
 
+def update_performance_metrics(telemetry_data: Optional[Dict] = None):
+    """更新績效指標到 performance_metrics.json"""
+    path = DATA_DIR / 'performance_metrics.json'
+    
+    # 若未提供 telemetry_data，則嘗試讀取現有的
+    if telemetry_data is None:
+        telemetry_path = DATA_DIR / 'telemetry.json'
+        if telemetry_path.exists():
+            telemetry_data = json.loads(telemetry_path.read_text(encoding='utf-8'))
+        else:
+            telemetry_data = {'records': [], 'metadata': {}}
+    
+    records = telemetry_data.get('records', [])
+    total_predictions = len(records)
+    
+    # 計算已驗證的準確率
+    verified_records = [r for r in records if r.get('accuracy') is not None]
+    accuracy_rate = 0.0
+    if verified_records:
+        correct_count = sum(1 for r in verified_records if r.get('accuracy') == 1)
+        accuracy_rate = (correct_count / len(verified_records)) * 100
+    
+    # 計算各版本統計
+    version_stats: Dict[str, Dict] = {}
+    for record in records:
+        version = str(record.get('prompt_version', 1))
+        if version not in version_stats:
+            version_stats[version] = {'version': int(version), 'predictions': 0, 'correct': 0}
+        version_stats[version]['predictions'] += 1
+        if record.get('accuracy') == 1:
+            version_stats[version]['correct'] += 1
+    
+    # 計算各版本準確率
+    version_stats_list = []
+    for version, stats in version_stats.items():
+        stats['accuracy'] = round((stats['correct'] / stats['predictions']) * 100, 1) if stats['predictions'] > 0 else 0.0
+        version_stats_list.append(stats)
+    
+    now = datetime.now(TZ_TAIPEI)
+    metrics = {
+        'total_predictions': total_predictions,
+        'accuracy_rate': round(accuracy_rate, 1),
+        'current_version': max(int(v) for v in version_stats.keys()) if version_stats else 1,
+        'last_updated': now.isoformat(),
+        'version_stats': version_stats_list
+    }
+    
+    path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding='utf-8')
+    logger.info(f"績效指標已更新：總預測={total_predictions}, 準確率={accuracy_rate:.1f}%")
+
+
 def run_daily_analysis(mode: str = 'full') -> Dict:
     """
     執行每日盤後分析
@@ -162,9 +213,15 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                     failed_count += 1
             
             # 🔴 修正：一次性寫入 telemetry (批次處理)
+            if 'metadata' not in telemetry_data:
+                telemetry_data['metadata'] = {}
+            
             telemetry_data['metadata']['created_at'] = telemetry_data['metadata'].get('created_at') or now.isoformat()
             telemetry_data['metadata']['total_records'] = len(telemetry_data['records'])
             telemetry_path.write_text(json.dumps(telemetry_data, ensure_ascii=False, indent=2), encoding='utf-8')
+            
+            # 🔴 修正：呼叫績效指標更新函數
+            update_performance_metrics(telemetry_data)
             
             # 🟡 修正：狀態判定更嚴謹
             if failed_count > 0:
