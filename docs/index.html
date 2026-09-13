@@ -53,6 +53,43 @@
             </div>
         </div>
 
+        <!-- 📦 監控股票池 -->
+        <div class="bg-white border rounded-lg p-4 mb-6">
+            <h2 class="text-xl font-semibold mb-4">📦 監控股票池</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50"><tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">代碼</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">名稱</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">產業</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">題材</th>
+                    </tr></thead>
+                    <tbody id="stock-pool-table" class="divide-y divide-gray-200">
+                        <tr><td colspan="4" class="px-4 py-4 text-center text-gray-500">載入中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 🎯 今日 AI 狙擊分析 -->
+        <div class="bg-white border rounded-lg p-4 mb-6">
+            <h2 class="text-xl font-semibold mb-4">🎯 今日 AI 狙擊分析</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50"><tr>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">股票</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">EV 分數</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">建議</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">風險</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">理由</th>
+                    </tr></thead>
+                    <tbody id="analysis-table" class="divide-y divide-gray-200">
+                        <tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">載入中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- 圖表區 -->
         <div class="bg-white border rounded-lg p-4 mb-6">
             <h2 class="text-xl font-semibold mb-4">📈 準確率趨勢</h2>
@@ -89,6 +126,8 @@
         const REPO_NAME = 'sniper-system-test';
         const METRICS_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/performance_metrics.json`;
         const TELEMETRY_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/telemetry.json`;
+        const POOL_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/stock_pool.json`;
+        const DEEP_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/deep_analysis.json`;
 
         // ⚠️ 關鍵修正：將 Chart 實例存為變數，避免重複初始化報錯
         let accuracyChartInstance = null;
@@ -111,11 +150,62 @@
             tableBody.innerHTML = getLoadingHtml('載入數據中...');
 
             try {
-                // 並行載入兩個 JSON 以提升速度
-                const [metricsRes, telemetryRes] = await Promise.allSettled([
+                // 並行載入四個 JSON：股票池、今日分析、績效指標、遙測記錄
+                const [poolRes, deepRes, metricsRes, telemetryRes] = await Promise.allSettled([
+                    fetch(POOL_URL),
+                    fetch(DEEP_URL),
                     fetch(METRICS_URL),
                     fetch(TELEMETRY_URL)
                 ]);
+
+                // 處理股票池數據 (🔴 修正：獨立 try-catch，避免 JSON 解析失敗影響其他區塊)
+                let pool = null;
+                if (poolRes.status === 'fulfilled' && poolRes.value.ok) {
+                    try { 
+                        pool = await poolRes.value.json(); 
+                    } catch (e) { 
+                        console.warn('stock_pool.json 解析失敗', e); 
+                    }
+                }
+
+                // 處理今日分析數據
+                let deep = null;
+                if (deepRes.status === 'fulfilled' && deepRes.value.ok) {
+                    try { 
+                        deep = await deepRes.value.json(); 
+                    } catch (e) { 
+                        console.warn('deep_analysis.json 解析失敗', e); 
+                    }
+                }
+
+                // 渲染股票池表格
+                if (pool && pool.stocks) {
+                    document.getElementById('stock-pool-table').innerHTML = pool.stocks.map(s => `
+                        <tr>
+                            <td class="px-4 py-3 text-sm">${escapeHTML(s.code)}</td>
+                            <td class="px-4 py-3 text-sm font-medium">${escapeHTML(s.name)}</td>
+                            <td class="px-4 py-3 text-sm">${escapeHTML(s.industry)}</td>
+                            <td class="px-4 py-3 text-sm">${escapeHTML(s.topic || '-')}</td>
+                        </tr>`).join('') ||
+                        '<tr><td colspan="4" class="px-4 py-4 text-center text-gray-500">股票池為空</td></tr>';
+                } else {
+                    document.getElementById('stock-pool-table').innerHTML = '<tr><td colspan="4" class="px-4 py-4 text-center text-gray-500">暫無股票池數據</td></tr>';
+                }
+
+                // 渲染今日分析表格
+                if (deep && deep.all_results) {
+                    document.getElementById('analysis-table').innerHTML = deep.all_results.map(r => `
+                        <tr>
+                            <td class="px-4 py-3 text-sm">${escapeHTML(r.code)} ${escapeHTML(r.name)}</td>
+                            <td class="px-4 py-3 text-sm font-bold ${(r.ev_score||0) >= 70 ? 'text-green-600' : 'text-gray-700'}">${escapeHTML(r.ev_score)}</td>
+                            <td class="px-4 py-3 text-sm">${escapeHTML(r.recommendation)}</td>
+                            <td class="px-4 py-3 text-sm">${escapeHTML(r.risk_level)}</td>
+                            <td class="px-4 py-3 text-sm text-gray-600">${escapeHTML(r.reason)}</td>
+                        </tr>`).join('') ||
+                        '<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">今日尚無分析結果</td></tr>';
+                } else {
+                    document.getElementById('analysis-table').innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">暫無分析數據</td></tr>';
+                }
 
                 // 處理 Metrics 數據 (🔴 修正：獨立 try-catch，避免 JSON 解析失敗影響其他區塊)
                 let metricsData = null;
