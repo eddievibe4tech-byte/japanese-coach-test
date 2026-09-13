@@ -115,6 +115,7 @@ class GroqClient:
             }
         ]
         
+        logger.info(f"發送請求到 Groq，模型：{self.model}")
         response_data = self._make_request(messages)
         
         if not response_data or 'choices' not in response_data:
@@ -122,14 +123,13 @@ class GroqClient:
             return None
         
         content = response_data['choices'][0]['message']['content']
-        logger.info(f"Groq 原始回應：{content[:200]}...")
+        logger.info(f"Groq 回傳內容（前 200 字元）：{content[:200]}...")
         
         # 解析 JSON 回應 - 加入更寬容的容錯機制
         try:
             # ✅ 從回應中提取 JSON（移除可能的 Markdown 標記）
             content = content.strip()
             if content.startswith('```'):
-                # 處理 ```json ... ``` 或 ``` ... ```
                 content = content.split('```')[1] if '```' in content[3:] else content[3:]
                 content = content.rsplit('```')[0] if '```' in content else content
                 content = content.strip()
@@ -146,24 +146,22 @@ class GroqClient:
                 result = json.loads(content_clean)
             
             # ✅ 驗證必要欄位並加入預設值
-            required_fields = ['ev_score', 'recommendation']
-            missing_fields = [f for f in required_fields if f not in result]
+            if 'ev_score' not in result:
+                logger.warning("缺少 ev_score 欄位")
+                result['ev_score'] = 50
+            if 'recommendation' not in result:
+                logger.warning("缺少 recommendation 欄位")
+                result['recommendation'] = "觀望"
+            if 'reason' not in result:
+                logger.warning("缺少 reason 欄位")
+                result['reason'] = "AI 分析失敗"
             
-            if missing_fields:
-                logger.warning(f"Groq 回傳缺少欄位：{missing_fields}")
-                logger.warning(f"實際欄位：{list(result.keys())}")
-                # 加入預設值
-                if 'ev_score' not in result:
-                    result['ev_score'] = 50  # 預設中性分數
-                if 'recommendation' not in result:
-                    result['recommendation'] = "觀望"
-                if 'reason' not in result:
-                    result['reason'] = "AI 分析失敗，使用預設值"
+            logger.info(f"解析成功：{result}")
             
             return {
                 'ev_score': int(result.get('ev_score', 50)),
                 'recommendation': result.get('recommendation', '觀望'),
-                'reason': result.get('reason', 'AI 分析失敗，使用預設值'),
+                'reason': result.get('reason', 'AI 分析失敗'),
                 'raw_response': content
             }
             
