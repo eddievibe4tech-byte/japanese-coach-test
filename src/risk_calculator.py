@@ -4,57 +4,59 @@
 """
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime
+import math
 
 
 def calculate_volatility(prices: List[float], period: int = 20) -> float:
     """
-    計算指定週期的波動率（標準差 / 均值 * 100）
-    
+    計算指定週期的年化波動率（使用對數報酬率與樣本變異數）
+
     Args:
         prices: 收盤價列表
         period: 計算週期，預設 20 日
-        
+
     Returns:
-        波動率百分比
+        年化波動率百分比
     """
     if len(prices) < 2:
         return 0.0
-    
+
     # 取最近 period 天的價格
     recent_prices = prices[-period:] if len(prices) >= period else prices
-    
+
     if len(recent_prices) < 2:
         return 0.0
-    
-    # 計算每日報酬率
+
+    # 1. 改用對數報酬率 (Log Returns) - 金融業界標準
     returns = []
     for i in range(1, len(recent_prices)):
-        if recent_prices[i-1] != 0:
-            daily_return = (recent_prices[i] - recent_prices[i-1]) / recent_prices[i-1]
-            returns.append(daily_return)
-    
+        if recent_prices[i-1] > 0 and recent_prices[i] > 0:
+            # 使用 math.log 計算對數報酬率
+            log_return = math.log(recent_prices[i] / recent_prices[i-1])
+            returns.append(log_return)
+
     if len(returns) < 2:
         return 0.0
-    
-    # 計算標準差
+
+    # 2. 改用樣本變異數 (除以 N-1) - 避免小樣本低估波動率
     mean_return = sum(returns) / len(returns)
-    variance = sum((r - mean_return) ** 2 for r in returns) / len(returns)
+    variance = sum((r - mean_return) ** 2 for r in returns) / (len(returns) - 1)
     std_dev = variance ** 0.5
-    
-    # 年化波動率並轉換為百分比
+
+    # 年化 (252 個交易日) 並轉為百分比
     annualized_volatility = std_dev * (252 ** 0.5) * 100
-    
+
     return round(annualized_volatility, 2)
 
 
 def assess_risk_level(volatility: float, volatility_limit: float = 30.0) -> str:
     """
     根據波動率評估風險等級
-    
+
     Args:
         volatility: 波動率百分比
         volatility_limit: 波動率警戒線
-        
+
     Returns:
         風險等級字串 (🟢 低風險 / 🟡 中風險 / 🟠 高風險 / 🔴 極高風險)
     """
@@ -73,37 +75,61 @@ def check_industry_concentration(
     industry_limit_percent: float = 40.0
 ) -> Tuple[bool, Dict[str, float], List[str]]:
     """
-    檢查投資組合的產業集中度
-    
+    檢查投資組合的產業集中度（基於資金權重）
+
     Args:
-        stocks: 股票清單，每個元素包含 'industry' 鍵
+        stocks: 股票清單，每個元素應包含 'industry' 和 'weight' (資金佔比%) 鍵
         industry_limit_percent: 產業集中度上限
-        
+
     Returns:
-        (是否超標, 產業分佈字典, 警告訊息列表)
+        (是否超標，產業分佈字典，警告訊息列表)
     """
     if not stocks:
         return False, {}, []
-    
-    # 計算各產業佔比
-    industry_count: Dict[str, int] = {}
+
+    # 計算總資金權重
+    total_weight = sum(stock.get('weight', 0.0) for stock in stocks)
+    if total_weight == 0:
+        # 若無 weight 欄位，退回使用檔數計算（向後相容）
+        industry_count: Dict[str, int] = {}
+        for stock in stocks:
+            industry = stock.get('industry', '未知')
+            industry_count[industry] = industry_count.get(industry, 0) + 1
+
+        total_stocks = len(stocks)
+        industry_distribution: Dict[str, float] = {}
+        warnings: List[str] = []
+        is_exceeded = False
+
+        for industry, count in industry_count.items():
+            percentage = (count / total_stocks) * 100
+            industry_distribution[industry] = round(percentage, 2)
+
+            if percentage > industry_limit_percent:
+                is_exceeded = True
+                warnings.append(f"{industry}產業佔比{percentage:.1f}%超過上限{industry_limit_percent}%")
+
+        return is_exceeded, industry_distribution, warnings
+
+    # 基於資金權重計算產業集中度
+    industry_weights: Dict[str, float] = {}
     for stock in stocks:
         industry = stock.get('industry', '未知')
-        industry_count[industry] = industry_count.get(industry, 0) + 1
-    
-    total_stocks = len(stocks)
+        weight = stock.get('weight', 0.0)
+        industry_weights[industry] = industry_weights.get(industry, 0.0) + weight
+
     industry_distribution: Dict[str, float] = {}
     warnings: List[str] = []
     is_exceeded = False
-    
-    for industry, count in industry_count.items():
-        percentage = (count / total_stocks) * 100
+
+    for industry, weight in industry_weights.items():
+        percentage = (weight / total_weight) * 100
         industry_distribution[industry] = round(percentage, 2)
-        
+
         if percentage > industry_limit_percent:
             is_exceeded = True
-            warnings.append(f"{industry}產業佔比{percentage:.1f}%超過上限{industry_limit_percent}%")
-    
+            warnings.append(f"{industry}產業資金佔比{percentage:.1f}%超過上限{industry_limit_percent}%")
+
     return is_exceeded, industry_distribution, warnings
 
 
@@ -116,19 +142,19 @@ def calculate_risk_score(
 ) -> int:
     """
     計算整體風險分數 (0-100)
-    
+
     Args:
         volatility: 平均波動率
         industry_exceeded: 產業集中度是否超標
         high_risk_count: 高風險標的數量
         total_positions: 總持倉數量
         volatility_limit: 波動率警戒線
-        
+
     Returns:
         風險分數 (0-100)
     """
     score = 0
-    
+
     # 波動率分數 (最高 40 分)
     if volatility > volatility_limit * 1.5:
         score += 40
@@ -136,11 +162,11 @@ def calculate_risk_score(
         score += 25
     elif volatility > volatility_limit * 0.5:
         score += 10
-    
+
     # 產業集中度分數 (最高 30 分)
     if industry_exceeded:
         score += 30
-    
+
     # 高風險標的比例分數 (最高 30 分)
     if total_positions > 0:
         high_risk_ratio = high_risk_count / total_positions
@@ -150,17 +176,17 @@ def calculate_risk_score(
             score += 20
         elif high_risk_ratio > 0.1:
             score += 10
-    
+
     return min(score, 100)
 
 
 def get_risk_status(risk_score: int) -> str:
     """
     根據風險分數取得風險狀態
-    
+
     Args:
         risk_score: 風險分數 (0-100)
-        
+
     Returns:
         風險狀態字串 (✅ 安全 / 🟡 注意 / 🔴 危險)
     """
@@ -175,11 +201,11 @@ def get_risk_status(risk_score: int) -> str:
 def get_risk_suggestion(risk_score: int, risk_status: str) -> str:
     """
     根據風險狀態提供建議動作
-    
+
     Args:
         risk_score: 風險分數
         risk_status: 風險狀態
-        
+
     Returns:
         建議動作字串
     """
