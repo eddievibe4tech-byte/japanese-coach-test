@@ -2,13 +2,15 @@ name: Daily Analysis & Risk Assessment
 
 on:
   schedule:
-    # 每個交易日 (週一至週五) 下午 14:00 UTC (約台灣時間 22:00) 執行
+    # 每個交易日 (週一至週五) 下午 14:00 UTC (台灣時間 22:00) 執行
     - cron: '0 14 * * 1-5'
   workflow_dispatch: # 允許手動觸發
 
+# ⚠️ 關鍵：賦予 Workflow 寫入 Repository 的權限
+permissions:
+  contents: write
+
 env:
-  FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
-  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
   PYTHON_VERSION: '3.11'
 
 jobs:
@@ -18,6 +20,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        # 必須保留憑證，後續才能 Push
+        with:
+          persist-credentials: true 
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -28,45 +33,32 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install -r requirements.txt
 
-      - name: Run BDD Tests
+      - name: Execute Daily Analysis (Full Mode)
         run: |
-          behave --dry-run
+          python src/main.py --mode full
+        env:
+          FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
-      - name: Run Unit Tests with Coverage
-        run: |
-          pytest tests/unit/ -v --cov=src --cov-report=xml --cov-report=term-missing
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+      # ⚠️ 關鍵：將執行結果 (包含更新的 data/ 與新的 results/) 自動 Commit 回 Repo
+      - name: Commit and Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          file: ./coverage.xml
-          flags: unittests
-          fail_ci_if_error: false
+          commit_message: "chore: daily analysis update [skip ci]"
+          branch: main
+          commit_user_name: "Sniper Bot"
+          commit_user_email: "bot@sniper-system.com"
+          # 指定要追蹤變更的目錄
+          file_pattern: 'data/*.json prompts/*.txt results/*.json logs/*.log'
 
-      - name: Execute Daily Analysis
-        run: |
-          python src/main.py --mode analysis
-        continue-on-error: true
-        env:
-          FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-
-      - name: Execute Risk Assessment
-        run: |
-          python src/main.py --mode risk
-        continue-on-error: true
-        env:
-          FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-
-      - name: Upload Analysis Results
+      - name: Upload Analysis Results (Backup)
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: analysis-results-${{ github.run_id }}
           path: |
-            data/*.json
+            results/*.json
             logs/*.log
           retention-days: 7

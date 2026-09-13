@@ -6,7 +6,8 @@ import argparse
 import json
 import logging
 import os
-from datetime import datetime
+import sys
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -15,32 +16,48 @@ from dotenv import load_dotenv
 # 載入環境變數
 load_dotenv()
 
-# 設定日誌
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/sniper_system.log'),
-        logging.StreamHandler()
-    ]
-)
+# 動態取得專案根目錄 (假設 main.py 在 src/ 下)
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / 'data'
+LOGS_DIR = BASE_DIR / 'logs'
+RESULTS_DIR = BASE_DIR / 'results'
+
+# 設定台灣時區 (UTC+8)
+TZ_TAIPEI = timezone(timedelta(hours=8))
+
+
+def setup_logging():
+    """設定日誌"""
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    log_file = LOGS_DIR / f"sniper_system_{datetime.now(TZ_TAIPEI).strftime('%Y%m%d')}.log"
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
+
 logger = logging.getLogger(__name__)
 
 
 def ensure_directories():
     """確保必要的目錄存在"""
-    directories = ['data', 'logs', 'results']
-    for directory in directories:
-        Path(directory).mkdir(parents=True, exist_ok=True)
+    for directory in [DATA_DIR, LOGS_DIR, RESULTS_DIR]:
+        directory.mkdir(parents=True, exist_ok=True)
 
 
-def load_config(config_path: str = 'data/stock_pool.json') -> Dict:
+def load_config(config_path: str = 'stock_pool.json') -> Dict:
     """載入股票池配置"""
+    full_path = DATA_DIR / config_path
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
+        with open(full_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except FileNotFoundError:
-        logger.warning(f"配置文件 {config_path} 未找到，使用預設配置")
+        logger.warning(f"配置文件 {full_path} 未找到，使用預設配置")
         return {"stocks": [], "sectors": {}}
 
 
@@ -56,34 +73,30 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
     """
     logger.info(f"開始執行每日分析，模式：{mode}")
     
+    # 使用台灣時間
+    now = datetime.now(TZ_TAIPEI)
     results = {
-        'timestamp': datetime.now().isoformat(),
+        'timestamp': now.isoformat(),
         'mode': mode,
         'status': 'success',
         'data': {}
     }
     
-    # TODO: 實作實際的分析邏輯
-    # 1. 從 FinMind 抓取最新數據
-    # 2. 執行 Groq AI 分析
-    # 3. 計算風險指標
-    # 4. 生成投資建議
-    
     if mode in ['full', 'analysis']:
-        logger.info("執行市場體制分析...")
-        # results['data']['market_regime'] = analyze_market_regime()
-        # results['data']['stock_analysis'] = analyze_stocks()
-    
+        logger.info("執行市場體制與個股分析...")
+        # TODO: 呼叫 FinMind 與 Groq 客戶端
+        results['data']['market_regime'] = "震盪 (Mock)"
+        
     if mode in ['full', 'risk']:
         logger.info("執行風險評估...")
-        # results['data']['risk_assessment'] = assess_portfolio_risk()
-    
+        # TODO: 呼叫風險計算器
+        
     if mode in ['full', 'optimize']:
-        logger.info("執行投資組合優化...")
-        # results['data']['optimization'] = optimize_portfolio()
-    
-    # 儲存結果
-    output_file = f"results/analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        logger.info("檢查是否需要優化 Prompt...")
+        # TODO: 呼叫 Prompt Optimizer
+
+    # 儲存結果 (使用台灣時間命名)
+    output_file = RESULTS_DIR / f"analysis_{now.strftime('%Y%m%d_%H%M%S')}.json"
     try:
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
@@ -108,11 +121,14 @@ def main():
     parser.add_argument(
         '--config',
         type=str,
-        default='data/stock_pool.json',
+        default='stock_pool.json',
         help='配置文件路徑'
     )
     
     args = parser.parse_args()
+    
+    # 設定日誌
+    setup_logging()
     
     # 確保目錄存在
     ensure_directories()
@@ -123,12 +139,10 @@ def main():
     # 執行分析
     results = run_daily_analysis(mode=args.mode)
     
-    # 輸出結果摘要
+    # 輸出結果摘要 (供 GitHub Actions Log 查看)
     print("\n" + "="*50)
     print("狙擊手系統執行完成")
-    print("="*50)
     print(f"時間：{results['timestamp']}")
-    print(f"模式：{results['mode']}")
     print(f"狀態：{results['status']}")
     print("="*50 + "\n")
     
