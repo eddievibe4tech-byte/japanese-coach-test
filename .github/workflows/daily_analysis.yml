@@ -1,0 +1,72 @@
+name: Daily Analysis & Risk Assessment
+
+on:
+  schedule:
+    # 每個交易日 (週一至週五) 下午 14:00 UTC (約台灣時間 22:00) 執行
+    - cron: '0 14 * * 1-5'
+  workflow_dispatch: # 允許手動觸發
+
+env:
+  FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  daily-analysis:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run BDD Tests
+        run: |
+          behave --dry-run
+
+      - name: Run Unit Tests with Coverage
+        run: |
+          pytest tests/unit/ -v --cov=src --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          fail_ci_if_error: false
+
+      - name: Execute Daily Analysis
+        run: |
+          python src/main.py --mode analysis
+        continue-on-error: true
+        env:
+          FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+      - name: Execute Risk Assessment
+        run: |
+          python src/main.py --mode risk
+        continue-on-error: true
+        env:
+          FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+      - name: Upload Analysis Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: analysis-results-${{ github.run_id }}
+          path: |
+            data/*.json
+            logs/*.log
+          retention-days: 7
