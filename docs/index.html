@@ -169,6 +169,20 @@
         // GitHub Repository 設定
         const REPO_USER = 'eddievibe4tech-byte'; 
         const REPO_NAME = 'sniper-system-test';
+        
+        // 🟢 P0 Patch 1: 統一 Fetch Helper - 計算專案根目錄（相容 GitHub Pages 的子路徑）
+        const BASE = window.location.pathname.endsWith('/')
+            ? window.location.pathname
+            : window.location.pathname.replace(/[^/]*$/, '');
+        
+        async function fetchJSON(relPath) {
+            const url = BASE + relPath + '?v=' + Date.now();  // 破 GitHub Pages 快取
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`${relPath} → HTTP ${res.status}`);
+            return res.json();
+        }
+        
+        // 保留原始 URL 作為備案
         const METRICS_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/performance_metrics.json`;
         const TELEMETRY_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/telemetry.json`;
         const POOL_URL = `https://raw.githubusercontent.com/${REPO_USER}/${REPO_NAME}/main/data/stock_pool.json`;
@@ -195,32 +209,28 @@
             tableBody.innerHTML = getLoadingHtml('載入數據中...');
 
             try {
-                // 並行載入四個 JSON：股票池、今日分析、績效指標、遙測記錄
+                // 🟢 P0 Patch 1: 使用統一的 fetchJSON helper，錯誤時顯示檔名
                 const [poolRes, deepRes, metricsRes, telemetryRes] = await Promise.allSettled([
-                    fetch(POOL_URL),
-                    fetch(DEEP_URL),
-                    fetch(METRICS_URL),
-                    fetch(TELEMETRY_URL)
+                    fetchJSON('data/stock_pool.json').catch(e => ({ error: e.message })),
+                    fetchJSON('data/deep_analysis.json').catch(e => ({ error: e.message })),
+                    fetchJSON('data/performance_metrics.json').catch(e => ({ error: e.message })),
+                    fetchJSON('data/telemetry.json').catch(e => ({ error: e.message }))
                 ]);
 
-                // 處理股票池數據 (🔴 修正：獨立 try-catch，避免 JSON 解析失敗影響其他區塊)
+                // 處理股票池數據
                 let pool = null;
-                if (poolRes.status === 'fulfilled' && poolRes.value.ok) {
-                    try { 
-                        pool = await poolRes.value.json(); 
-                    } catch (e) { 
-                        console.warn('stock_pool.json 解析失敗', e); 
-                    }
+                if (poolRes.status === 'fulfilled' && !poolRes.value.error) {
+                    pool = poolRes.value;
+                } else if (poolRes.status === 'fulfilled' && poolRes.value.error) {
+                    console.warn('stock_pool.json 載入失敗:', poolRes.value.error);
                 }
 
                 // 處理今日分析數據
                 let deep = null;
-                if (deepRes.status === 'fulfilled' && deepRes.value.ok) {
-                    try { 
-                        deep = await deepRes.value.json(); 
-                    } catch (e) { 
-                        console.warn('deep_analysis.json 解析失敗', e); 
-                    }
+                if (deepRes.status === 'fulfilled' && !deepRes.value.error) {
+                    deep = deepRes.value;
+                } else if (deepRes.status === 'fulfilled' && deepRes.value.error) {
+                    console.warn('deep_analysis.json 載入失敗:', deepRes.value.error);
                 }
 
                 // 渲染股票池表格
@@ -237,7 +247,7 @@
                     document.getElementById('stock-pool-table').innerHTML = '<tr><td colspan="4" class="px-4 py-4 text-center text-gray-500">暫無股票池數據</td></tr>';
                 }
 
-                // 渲染今日分析表格 (加入點擊展開功能)
+                // 渲染今日分析表格
                 if (deep && deep.all_results) {
                     console.log("Deep analysis data:", deep);
                     
@@ -247,35 +257,52 @@
                     // 渲染表格
                     renderAnalysisTable(deep.all_results);
                     
-                    // 計算準確率統計（傳入 telemetryRes）
-                    calculateAccuracyStats(telemetryRes);
+                    // 計算準確率統計
+                    calculateAccuracyStats(null, telemetryRes);
                 } else {
                     document.getElementById('analysis-table').innerHTML = '<tr><td colspan="8" class="px-4 py-4 text-center text-gray-500">暫無分析數據</td></tr>';
                 }
 
-                // 處理 Metrics 數據 (🔴 修正：獨立 try-catch，避免 JSON 解析失敗影響其他區塊)
+                // 🟢 P0 Patch 2: 頂部卡 fallback - 讀不到 metrics 就用 telemetry 現算
                 let metricsData = null;
-                if (metricsRes.status === 'fulfilled' && metricsRes.value.ok) {
-                    try {
-                        metricsData = await metricsRes.value.json();
-                    } catch (e) {
-                        console.warn('performance_metrics.json 解析失敗', e);
-                    }
+                if (metricsRes.status === 'fulfilled' && !metricsRes.value.error) {
+                    metricsData = metricsRes.value;
+                } else if (metricsRes.status === 'fulfilled' && metricsRes.value.error) {
+                    console.warn('performance_metrics.json 載入失敗:', metricsRes.value.error);
                 }
 
                 // 處理 Telemetry 數據
                 let telemetryData = null;
-                if (telemetryRes.status === 'fulfilled' && telemetryRes.value.ok) {
-                    try {
-                        telemetryData = await telemetryRes.value.json();
-                    } catch (e) {
-                        console.warn('telemetry.json 解析失敗', e);
-                    }
+                if (telemetryRes.status === 'fulfilled' && !telemetryRes.value.error) {
+                    telemetryData = telemetryRes.value;
+                } else if (telemetryRes.status === 'fulfilled' && telemetryRes.value.error) {
+                    console.warn('telemetry.json 載入失敗:', telemetryRes.value.error);
+                }
+                
+                // Fallback: 如果 metrics 讀不到，用 telemetry 現算
+                if (!metricsData && telemetryData) {
+                    const recs = telemetryData.records || [];
+                    const verified = recs.filter(r => r.actual_result);
+                    metricsData = {
+                        total_predictions: recs.length,
+                        accuracy_rate: verified.length >= 10
+                            ? Math.round(verified.filter(r => r.actual_result.was_correct).length / verified.length * 100)
+                            : null,  // 樣本不足 → 顯示「資料不足」
+                        current_version: 1,
+                        last_updated: recs.length ? recs[recs.length - 1].timestamp : null
+                    };
+                    console.log('使用 telemetry fallback 計算 metrics');
                 }
 
                 // 1. 更新卡片數據
                 if (metricsData) {
-                    document.getElementById('accuracy').innerText = (metricsData.accuracy_rate || 0).toFixed(1) + '%';
+                    // 🟡 修正：樣本不足時顯示「資料不足」而非 0.0%
+                    const accRate = metricsData.accuracy_rate;
+                    if (accRate === null || accRate === undefined) {
+                        document.getElementById('accuracy').innerText = '資料不足';
+                    } else {
+                        document.getElementById('accuracy').innerText = accRate.toFixed(1) + '%';
+                    }
                     document.getElementById('total-preds').innerText = metricsData.total_predictions || 0;
                     document.getElementById('prompt-version').innerText = 'V' + (metricsData.current_version || 1);
                     
@@ -283,9 +310,18 @@
                     document.getElementById('last-updated').innerText = `最後更新時間：${updateTime}`;
                 } else {
                     document.getElementById('last-updated').innerText = '最後更新時間：暫無數據 (檔案可能尚未生成)';
+                    document.getElementById('accuracy').innerText = '資料不足';
+                    document.getElementById('total-preds').innerText = telemetryData ? (telemetryData.records || []).length : 0;
+                }
+                
+                // 2. 渲染近期預測紀錄
+                if (telemetryData && telemetryData.records) {
+                    renderRecentRecords(telemetryData.records);
+                } else {
+                    document.getElementById('predictions-table').innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">暫無預測紀錄</td></tr>';
                 }
 
-                // 2. 繪製圖表 (⚠️ 修正：相容 Object 結構的 version_stats + 🟡 排序 X 軸版本)
+                // 3. 繪製圖表
                 const ctx = document.getElementById('accuracyChart').getContext('2d');
                 let labels = [];
                 let accuracyData = [];
@@ -542,26 +578,54 @@
         }
 
         // 計算準確率統計（接收 telemetryRes 參數）
-        function calculateAccuracyStats(telemetryRes) {
-            if (telemetryRes.status !== 'fulfilled' || !telemetryRes.value.ok) {
+        function calculateAccuracyStats(metricsRes, telemetryRes) {
+            // 優先使用 metricsRes，如果沒有則從 telemetryRes 計算
+            if (metricsRes && !metricsRes.error) {
+                // 直接使用 metrics 數據
+                const verified = metricsRes.version_stats || [];
+                let totalCorrect = 0;
+                let totalPredictions = 0;
+                
+                verified.forEach(stat => {
+                    totalCorrect += stat.correct || 0;
+                    totalPredictions += stat.predictions || 0;
+                });
+                
+                const accuracy = totalPredictions > 0 ? ((totalCorrect / totalPredictions) * 100).toFixed(1) : '資料不足';
+                
+                // 如果 metrics 有正確/錯誤計數就直接使用
+                if (metricsRes.correct_count !== undefined) {
+                    document.getElementById('correct-count').innerText = metricsRes.correct_count;
+                    document.getElementById('incorrect-count').innerText = metricsRes.incorrect_count || 0;
+                    document.getElementById('pending-count').innerText = metricsRes.pending_count || 0;
+                    document.getElementById('avg-accuracy').innerText = accuracy + '%';
+                }
+                return;
+            }
+            
+            // Fallback: 從 telemetry 計算
+            if (!telemetryRes || telemetryRes.error) {
                 console.warn('Telemetry 數據載入失敗');
                 return;
             }
             
-            telemetryRes.value.json().then(telemetryData => {
-                const records = telemetryData.records || [];
-                const verified = records.filter(r => r.accuracy !== null);
-                const pending = records.filter(r => r.accuracy === null);
-                
-                const correct = verified.filter(r => r.accuracy === 1).length;
-                const incorrect = verified.filter(r => r.accuracy === 0).length;
-                const accuracy = verified.length > 0 ? ((correct / verified.length) * 100).toFixed(1) : '0.0';
-                
-                document.getElementById('correct-count').innerText = correct;
-                document.getElementById('incorrect-count').innerText = incorrect;
-                document.getElementById('pending-count').innerText = pending.length;
-                document.getElementById('avg-accuracy').innerText = accuracy + '%';
-            }).catch(() => {});
+            const telemetryData = telemetryRes;
+            const records = telemetryData.records || [];
+            const verified = records.filter(r => r.actual_result);
+            const pending = records.filter(r => !r.actual_result);
+            
+            const correct = verified.filter(r => r.actual_result && r.actual_result.was_correct).length;
+            const incorrect = verified.filter(r => r.actual_result && !r.actual_result.was_correct).length;
+            
+            // 🟡 修正：樣本不足時顯示「資料不足」而非 0.0%
+            const accuracy = verified.length >= 10 
+                ? ((correct / verified.length) * 100).toFixed(1) + '%'
+                : '資料不足';
+            
+            document.getElementById('correct-count').innerText = correct;
+            document.getElementById('incorrect-count').innerText = incorrect;
+            document.getElementById('pending-count').innerText = pending.length;
+            document.getElementById('avg-accuracy').innerText = accuracy;
         }
 
         // 切換詳細資訊行的顯示/隱藏
@@ -616,6 +680,89 @@
             
             // 重新渲染
             renderAnalysisTable(filtered);
+        }
+
+        // 渲染近期預測紀錄表格（在 loadDashboard 中呼叫）
+        function renderRecentRecords(records) {
+            const tableBody = document.getElementById('predictions-table');
+            
+            if (!records || records.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" class="px-4 py-4 text-center text-gray-500">暫無預測紀錄</td></tr>';
+                return;
+            }
+            
+            // 取最近 10 筆
+            const recent = records.slice(-10).reverse();
+            
+            tableBody.innerHTML = recent.map(r => {
+                // 🟢 P1: 從多個來源讀取股票代碼/名稱
+                const stockCode = r.prediction?.stock_code || r.input?.code || r.stock_code || '-';
+                const stockName = r.prediction?.stock_name || r.input?.name || r.stock_name || '-';
+                
+                // 🟢 P1: 從多個來源讀取建議
+                let recommendation = r.prediction?.recommendation || r.operation_suggestion || '-';
+                if (recommendation === '-' && r.prediction?.ev_score !== undefined) {
+                    // 如果還是沒有，用 ev_score 推斷
+                    if (r.prediction.ev_score >= 75) recommendation = '積極買入';
+                    else if (r.prediction.ev_score >= 55) recommendation = '回檔觀察';
+                    else recommendation = '避開';
+                }
+                
+                // 🟢 P1: 結果欄位使用 actual_result.was_correct
+                let resultText = '待驗證';
+                let resultClass = 'text-gray-500';
+                
+                if (r.actual_result) {
+                    if (r.actual_result.was_correct === true) {
+                        resultText = '✅ 正確';
+                        resultClass = 'text-green-600';
+                    } else if (r.actual_result.was_correct === false) {
+                        resultText = '❌ 錯誤';
+                        resultClass = 'text-red-600';
+                    }
+                } else if (r.accuracy !== null && r.accuracy !== undefined) {
+                    // 舊版相容：使用 accuracy 欄位
+                    if (r.accuracy === 1 || r.accuracy === 80 || r.accuracy === 100) {
+                        resultText = '✅ 正確';
+                        resultClass = 'text-green-600';
+                    } else if (r.accuracy === 0 || r.accuracy === 20) {
+                        resultText = '❌ 錯誤';
+                        resultClass = 'text-red-600';
+                    }
+                }
+                
+                // 時間格式化
+                let timeText = '-';
+                if (r.timestamp) {
+                    try {
+                        const dt = new Date(r.timestamp);
+                        timeText = dt.toLocaleString('zh-TW', { 
+                            month: '2-digit', 
+                            day: '2-digit', 
+                            hour: '2-digit', 
+                            minute: '2-digit' 
+                        });
+                    } catch (e) {
+                        timeText = r.timestamp;
+                    }
+                }
+                
+                return `
+                    <tr>
+                        <td class="px-4 py-3 text-sm text-gray-700">${timeText}</td>
+                        <td class="px-4 py-3 text-sm font-medium">${escapeHTML(stockCode)}</td>
+                        <td class="px-4 py-3 text-sm">${escapeHTML(stockName)}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <span class="px-2 py-1 rounded-full text-xs font-medium ${
+                                recommendation === '積極買入' ? 'bg-green-100 text-green-800' :
+                                recommendation === '避開' ? 'bg-red-100 text-red-800' :
+                                'bg-yellow-100 text-yellow-800'
+                            }">${escapeHTML(recommendation)}</span>
+                        </td>
+                        <td class="px-4 py-3 text-sm ${resultClass}">${resultText}</td>
+                    </tr>
+                `;
+            }).join('');
         }
 
         // 頁面載入完成後執行
