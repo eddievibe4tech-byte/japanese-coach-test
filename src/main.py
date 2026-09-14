@@ -56,7 +56,7 @@ def auto_verify_predictions(telemetry_data: Dict, finmind: FinMindClient, horizo
 
         # 取得當前價格
         try:
-            prices = finmind.get_stock_price(rec["stock_code"], days=1)
+            prices = finmind._get_raw_prices(rec["stock_code"], days=1) or []
             if not prices:
                 continue
             current = prices[-1]
@@ -282,7 +282,7 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                     
                     # ✅ 2. 嘗試使用 FinMind (主力)
                     try:
-                        prices = finmind.get_stock_price(code) or []
+                        prices = finmind._get_raw_prices(code) or []
                         revenue = finmind.get_revenue(code) or {}
                         revenue_yoy = revenue.get('yoy_growth', 0.0)
                         
