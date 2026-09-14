@@ -481,8 +481,8 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                 regime = deep_data.get('regime', {})
             else:
                 # fallback: 從 results 提取（如果有的話）
-                analysis_results = results.get('data', {}).get('stock_analysis', {}).get('all_results', [])
-                regime = results.get('data', {}).get('stock_analysis', {}).get('regime', {})
+                analysis_results = results.get('analysis_results', [])
+                regime = results.get('regime', {})
             
             if analysis_results or regime:
                 generate_static_review(analysis_results, regime)
