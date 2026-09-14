@@ -475,8 +475,8 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
             from src.report_generator import generate_static_review, generate_html_report
             
             # ✅ 直接使用記憶體中的 results 變數，避免讀取硬碟上的舊檔案
-            analysis_results = results.get('analysis_results', [])
-            regime = results.get('regime', {})
+            analysis_results = results.get('data', {}).get('stock_analysis', {}).get('all_results', [])
+            regime = results.get('data', {}).get('stock_analysis', {}).get('regime', {})
             
             # ✅ 正規化 regime：可能是字串（如 '震盪'），轉為 Dict
             if isinstance(regime, str):
