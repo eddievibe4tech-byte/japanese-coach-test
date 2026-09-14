@@ -37,13 +37,15 @@ class TestMakeRequest:
         responses.add(
             responses.GET,
             'https://api.finmindtrade.com/api/v4/data',
-            json={'status': 200, 'msg': 'success', 'data': [{'result': 'test'}]},
+            json={'status': 200, 'msg': 'success', 'data': [{'date': '2024-01-01', 'revenue': 100}]},
             status=200
         )
         
         client = FinMindClient(token='test_token')
-        # 直接呼叫 _make_request 需要構造 params
-        # 此處通過公開方法間接測試
+        # ✅ 實際呼叫公開方法間接測試 _make_request
+        result = client.get_revenue('2330', months=1)
+        assert result is not None
+        assert result['revenue'] == 100.0
     
     @responses.activate
     def test_api_error(self):
@@ -55,7 +57,11 @@ class TestMakeRequest:
             status=200
         )
         
-        # 需要實際呼叫方法來觸發處理邏輯
+        # ✅ 實際呼叫方法來觸發處理邏輯
+        client = FinMindClient(token='test_token')
+        result = client.get_revenue('2330', months=1)
+        # API 失敗時應返回 None
+        assert result is None
 
 
 class TestGetRevenue:
@@ -195,8 +201,9 @@ class TestGetMarginBalance:
             'status': 200,
             'msg': 'success',
             'data': [
-                {'date': '2024-01-01', 'MarginBalance': 1000},
-                {'date': '2024-01-05', 'MarginBalance': 1500}
+                # ✅ 修正：使用 FinMind API v4 實際的欄位名稱
+                {'date': '2024-01-01', 'MarginPurchaseTodayBalance': 1000},
+                {'date': '2024-01-05', 'MarginPurchaseTodayBalance': 1500}
             ]
         }
         
@@ -219,8 +226,9 @@ class TestGetMarginBalance:
             'status': 200,
             'msg': 'success',
             'data': [
-                {'date': '2024-01-01', 'MarginBalance': 1500},
-                {'date': '2024-01-05', 'MarginBalance': 1000}
+                # ✅ 修正：使用 FinMind API v4 實際的欄位名稱
+                {'date': '2024-01-01', 'MarginPurchaseTodayBalance': 1500},
+                {'date': '2024-01-05', 'MarginPurchaseTodayBalance': 1000}
             ]
         }
         

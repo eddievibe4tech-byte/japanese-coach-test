@@ -15,7 +15,8 @@ class TestGroqClientInit:
         """測試提供 API Key 的初始化"""
         client = GroqClient(api_key='test_key')
         assert client.api_key == 'test_key'
-        assert client.model == "llama-3.3-70b-versatile"
+        # 預設模型為 qwen/qwen3.6-27b
+        assert client.model == "qwen/qwen3.6-27b"
     
     def test_init_custom_model(self):
         """測試自訂模型"""
@@ -41,10 +42,12 @@ class TestMakeRequest:
     @patch('src.groq_client.requests.post')
     def test_successful_request(self, mock_post):
         """測試成功的 API 請求"""
+        import json
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.json.return_value = {
             'choices': [{
-                'message': {'content': '{"result": "test"}'}
+                'message': {'content': json.dumps({"result": "test"})}
             }]
         }
         mock_post.return_value = mock_response
@@ -129,7 +132,7 @@ class TestAnalyzeStock:
     
     @patch('src.groq_client.GroqClient._make_request')
     def test_analyze_stock_missing_fields(self, mock_request):
-        """測試缺少必要欄位"""
+        """測試缺少必要欄位時的預設值補齊機制"""
         mock_request.return_value = {
             'choices': [{
                 'message': {
@@ -144,7 +147,11 @@ class TestAnalyzeStock:
         
         result = client.analyze_stock(prompt_template, stock_data)
         
-        assert result is None
+        # ✅ 修正：預期應回傳帶有預設值的字典，而非 None
+        assert result is not None
+        assert result['ev_score'] == 80
+        assert result['recommendation'] == "觀望"
+        assert result['reason'] == "AI 分析失敗"
     
     @patch('src.groq_client.GroqClient._make_request')
     def test_analyze_stock_invalid_json(self, mock_request):
