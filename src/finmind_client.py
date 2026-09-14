@@ -178,33 +178,47 @@ class FinMindClient:
         # 回傳增減張數 (FinMind 單位通常是張)
         return int(today_balance - yesterday_balance)
     
-    def get_stock_price(self, stock_id: str, days: int = 30) -> Optional[List[float]]:
+    def _get_raw_prices(self, stock_id: str, days: int = 60) -> List[float]:
+        """內部使用：取得原始收盤價陣列"""
+        data = self._make_request('TaiwanStockPrice', stock_id, days=days) or []
+        return [float(r.get('close', 0)) for r in data]
+    
+    def get_stock_price(self, stock_id: str, days: int = 30) -> Optional[Dict]:
         """
-        取得股票收盤價列表
+        取得股票收盤價並壓縮為特徵值（降低 Token 消耗）
+        
+        【壓縮優化】
+        - 不回傳完整價格陣列（原本 1000+ tokens）
+        - 只回傳技術特徵（壓縮到 <50 tokens）
         
         Args:
             stock_id: 股票代號
             days: 要取得的天數
             
         Returns:
-            收盤價列表
+            包含價格特徵的字典：latest_price, ma5, ma20, price_trend
         """
-        data = self._make_request('TaiwanStockPrice', stock_id, days=days) or []
+        prices = self._get_raw_prices(stock_id, days)
         
-        if not data:
-            return []
+        # ✅ 壓縮優化：只回傳特徵值，不回傳完整陣列
+        if len(prices) < 5:
+            return {
+                'latest_price': prices[-1] if prices else 0,
+                'ma5': 0,
+                'ma20': 0,
+                'price_trend': 'unknown'
+            }
         
-        price_data = data
-        if not price_data:
-            return []
+        ma5 = sum(prices[-5:]) / 5
+        ma20 = sum(prices[-20:]) / 20 if len(prices) >= 20 else ma5
+        price_trend = "up" if prices[-1] > prices[0] else "down"
         
-        # 提取收盤價
-        prices = []
-        for record in price_data:
-            close_price = float(record.get('close', 0))
-            prices.append(close_price)
-        
-        return prices
+        return {
+            'latest_price': round(prices[-1], 2),
+            'ma5': round(ma5, 2),
+            'ma20': round(ma20, 2),
+            'price_trend': price_trend
+        }
     
     def get_financial_statements(self, code: str, days: int = 365) -> Optional[Dict]:
         """
@@ -245,7 +259,7 @@ class FinMindClient:
         Returns:
             包含技術指標的字典
         """
-        prices = self.get_stock_price(code, days=60) or []
+        prices = self._get_raw_prices(code, days=60)
         if len(prices) < 20:
             return {'ma5': 0, 'ma20': 0, 'rsi': 50, 'macd': 0, 'price_above_ma20': False}
         

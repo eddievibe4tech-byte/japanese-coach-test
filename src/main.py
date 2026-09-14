@@ -56,7 +56,7 @@ def auto_verify_predictions(telemetry_data: Dict, finmind: FinMindClient, horizo
 
         # 取得當前價格
         try:
-            prices = finmind.get_stock_price(rec["stock_code"], days=1)
+            prices = finmind._get_raw_prices(rec["stock_code"], days=1) or []
             if not prices:
                 continue
             current = prices[-1]
@@ -107,13 +107,16 @@ def setup_logging():
         logger.handlers.clear()  # 清除舊的 Handler
     
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    log_file = LOGS_DIR / f"sniper_system_{datetime.now(TZ_TAIPEI).strftime('%Y%m%d')}.log"
+    
+    # 🔴 P1 修正：支援 LOG_LEVEL 環境變數，預設 INFO 避免 DEBUG log 塞爆
+    log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+    numeric_level = getattr(logging, log_level, logging.INFO)
     
     logging.basicConfig(
-        level=logging.INFO,
+        level=numeric_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.FileHandler(LOGS_DIR / f"sniper_system_{datetime.now(TZ_TAIPEI).strftime('%Y%m%d')}.log", encoding='utf-8'),
             logging.StreamHandler(sys.stdout)
         ]
     )
@@ -279,7 +282,7 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                     
                     # ✅ 2. 嘗試使用 FinMind (主力)
                     try:
-                        prices = finmind.get_stock_price(code) or []
+                        prices = finmind._get_raw_prices(code) or []
                         revenue = finmind.get_revenue(code) or {}
                         revenue_yoy = revenue.get('yoy_growth', 0.0)
                         
@@ -456,6 +459,7 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
             (DATA_DIR / 'deep_analysis.json').write_text(
                 json.dumps(deep, ensure_ascii=False, indent=2), encoding='utf-8')
             results['data']['stock_analysis'] = deep
+            results['regime'] = regime  # ✅ 將 regime 存入 results 供報告生成使用
         
     if mode in ['full', 'risk']:
         logger.info("執行風險評估...")
@@ -464,6 +468,26 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
     if mode in ['full', 'optimize']:
         logger.info("檢查是否需要優化 Prompt...")
         # TODO: 呼叫 Prompt Optimizer
+    
+    # ✅ 生成靜態報告（Markdown + HTML）供 GitHub Pages 展示
+    if mode in ['full', 'analysis']:
+        try:
+            from src.report_generator import generate_static_review, generate_html_report
+            
+            # ✅ 直接使用記憶體中的 results 變數，避免讀取硬碟上的舊檔案
+            analysis_results = results.get('data', {}).get('stock_analysis', {}).get('all_results', [])
+            regime = results.get('data', {}).get('stock_analysis', {}).get('regime', {})
+            
+            # ✅ 正規化 regime：可能是字串（如 '震盪'），轉為 Dict
+            if isinstance(regime, str):
+                regime = {'regime': regime, 'confidence': '中'}
+            
+            if analysis_results or regime:
+                generate_static_review(analysis_results, regime)
+                generate_html_report(analysis_results, regime)
+                logger.info("✅ 靜態報告已生成至 docs/ 目錄")
+        except Exception as e:
+            logger.warning(f"生成靜態報告失敗：{e}")
 
     # 儲存結果 (使用台灣時間命名)
     output_file = RESULTS_DIR / f"analysis_{now.strftime('%Y%m%d_%H%M%S')}.json"
