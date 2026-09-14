@@ -59,11 +59,12 @@ def generate_static_review(
             code = res.get('code', 'N/A')
             score = res.get('ev_score', 0)
             rec = res.get('recommendation', '觀望')
-            reason = res.get('reason', '無')
+            reason = res.get('reason') or '無'
             
-            # 截斷理由，避免過長（最多 50 字）
+            # 截斷理由，避免過長（最多 50 字），並處理 | 字元避免破壞表格
             if len(reason) > 50:
                 reason = reason[:50] + "..."
+            reason = reason.replace('|', '\\|')
             
             md_content += f"| {code} | {score} | {rec} | {reason} |\n"
     else:
@@ -88,21 +89,25 @@ def _load_latest_analysis_result(data_dir: str) -> Optional[Dict]:
     if not os.path.exists(data_dir):
         return None
     
-    # 尋找最新的 JSON 檔案
+    # 尋找所有 JSON 檔案並按修改時間排序
     json_files = [f for f in os.listdir(data_dir) if f.endswith('.json')]
     if not json_files:
         return None
     
-    # 按修改時間排序
     json_files.sort(key=lambda x: os.path.getmtime(os.path.join(data_dir, x)), reverse=True)
-    latest_file = os.path.join(data_dir, json_files[0])
     
-    try:
-        with open(latest_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"⚠️ 載入分析結果失敗：{e}")
-        return None
+    # 驗證檔案結構，只回傳包含 'analysis_results' 的檔案
+    for name in json_files:
+        try:
+            file_path = os.path.join(data_dir, name)
+            with open(file_path, 'r', encoding='utf-8') as f:
+                obj = json.load(f)
+            if isinstance(obj, dict) and 'analysis_results' in obj:
+                return obj
+        except Exception:
+            continue
+    
+    return None
 
 
 def _update_index_md(output_dir: str, latest_report_path: str, date_str: str, 
@@ -155,6 +160,13 @@ def _update_index_md(output_dir: str, latest_report_path: str, date_str: str,
         f"## 📜 歷史報告\n\n- [{date_str} 每日複盤]({os.path.basename(latest_report_path)})"
     )
     
+    # 限制歷史記錄只保留最近 30 筆
+    lines = history_content.splitlines()
+    history_lines = [line for line in lines if line.startswith('- [')]
+    if len(history_lines) > 30:
+        history_lines = history_lines[:30]
+    history_content = "## 📜 歷史報告\n\n" + "\n".join(history_lines)
+    
     index_content += history_content
     
     with open(index_path, 'w', encoding='utf-8') as f:
@@ -202,13 +214,14 @@ def generate_html_report(
             code = res.get('code', 'N/A')
             score = res.get('ev_score', 0)
             rec = res.get('recommendation', '觀望')
-            reason = res.get('reason', '無')[:80]
+            reason = res.get('reason') or '無'
             
-            # 根據評分設定顏色（確保 score 是數值）
+            # 確保 score 是數值
             try:
-                score = int(res.get('ev_score', 0))
+                score = int(score)
             except (ValueError, TypeError):
                 score = 0
+            
             color = "#28a745" if score >= 70 else "#ffc107" if score >= 50 else "#dc3545"
             
             table_rows += f"""
@@ -216,7 +229,7 @@ def generate_html_report(
                 <td>{code}</td>
                 <td><span style="color: {color}; font-weight: bold;">{score}</span></td>
                 <td>{rec}</td>
-                <td>{reason}</td>
+                <td>{reason[:80]}</td>
             </tr>
             """
     else:

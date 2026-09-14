@@ -107,13 +107,16 @@ def setup_logging():
         logger.handlers.clear()  # 清除舊的 Handler
     
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    log_file = LOGS_DIR / f"sniper_system_{datetime.now(TZ_TAIPEI).strftime('%Y%m%d')}.log"
+    
+    # 🔴 P1 修正：支援 LOG_LEVEL 環境變數，預設 INFO 避免 DEBUG log 塞爆
+    log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+    numeric_level = getattr(logging, log_level, logging.INFO)
     
     logging.basicConfig(
-        level=logging.INFO,
+        level=numeric_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.FileHandler(LOGS_DIR / f"sniper_system_{datetime.now(TZ_TAIPEI).strftime('%Y%m%d')}.log", encoding='utf-8'),
             logging.StreamHandler(sys.stdout)
         ]
     )

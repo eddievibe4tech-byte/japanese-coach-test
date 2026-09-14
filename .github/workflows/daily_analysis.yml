@@ -58,7 +58,7 @@ jobs:
 
       - name: Upload Analysis Results (Backup)
         uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()        # 🔴 P1 修正：僅失敗時上傳 log，成功時不佔空間
         with:
           name: analysis-results-${{ github.run_id }}
           path: |

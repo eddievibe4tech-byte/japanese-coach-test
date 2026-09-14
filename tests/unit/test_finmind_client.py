@@ -246,51 +246,48 @@ class TestGetMarginBalance:
 
 
 class TestGetStockPrice:
-    """測試股價數據"""
-    
+    """測試股價壓縮特徵（新契約）"""
+
     @responses.activate
     def test_get_prices_success(self):
-        """測試成功取得股價"""
-        mock_data = {
-            'status': 200,
-            'msg': 'success',
-            'data': [
-                {'date': '2024-01-01', 'close': 100},
-                {'date': '2024-01-02', 'close': 102},
-                {'date': '2024-01-03', 'close': 101}
-            ]
-        }
-        
-        responses.add(
-            responses.GET,
-            'https://api.finmindtrade.com/api/v4/data',
-            json=mock_data,
-            status=200
-        )
-        
-        client = FinMindClient(token='test_token')
-        prices = client.get_stock_price('2330')
-        
-        assert len(prices) == 3
-        assert prices == [100.0, 102.0, 101.0]
-    
+        """數據不足 5 筆時回傳 unknown 特徵"""
+        mock_data = {'status': 200, 'msg': 'success', 'data': [
+            {'date': '2024-01-01', 'close': 100},
+            {'date': '2024-01-02', 'close': 102},
+            {'date': '2024-01-03', 'close': 101}]}
+        responses.add(responses.GET, 'https://api.finmindtrade.com/api/v4/data',
+                      json=mock_data, status=200)
+
+        features = FinMindClient(token='test_token').get_stock_price('2330')
+
+        assert isinstance(features, dict)
+        assert features['latest_price'] == 101.0
+        assert features['price_trend'] == 'unknown'
+
+    @responses.activate
+    def test_get_prices_features_computed(self):
+        """✅ 新增：驗證 >=20 筆時 ma5/ma20/trend 正確計算"""
+        closes = [100 + i for i in range(25)]
+        mock_data = {'status': 200, 'msg': 'success',
+                     'data': [{'date': f'2024-01-{i+1:02d}', 'close': c}
+                              for i, c in enumerate(closes)]}
+        responses.add(responses.GET, 'https://api.finmindtrade.com/api/v4/data',
+                      json=mock_data, status=200)
+
+        features = FinMindClient(token='test_token').get_stock_price('2330', days=60)
+
+        assert features['latest_price'] == 124.0
+        assert features['ma5'] == round(sum(closes[-5:]) / 5, 2)
+        assert features['ma20'] == round(sum(closes[-20:]) / 20, 2)
+        assert features['price_trend'] == 'up'
+
     @responses.activate
     def test_get_prices_empty(self):
-        """測試空股價數據"""
-        mock_data = {
-            'status': 200,
-            'msg': 'success',
-            'data': []
-        }
-        
-        responses.add(
-            responses.GET,
-            'https://api.finmindtrade.com/api/v4/data',
-            json=mock_data,
-            status=200
-        )
-        
-        client = FinMindClient(token='test_token')
-        prices = client.get_stock_price('2330')
-        
-        assert prices == []
+        mock_data = {'status': 200, 'msg': 'success', 'data': []}
+        responses.add(responses.GET, 'https://api.finmindtrade.com/api/v4/data',
+                      json=mock_data, status=200)
+
+        features = FinMindClient(token='test_token').get_stock_price('2330')
+
+        assert features == {'latest_price': 0, 'ma5': 0,
+                            'ma20': 0, 'price_trend': 'unknown'}
