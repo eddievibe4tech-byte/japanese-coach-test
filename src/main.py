@@ -473,9 +473,16 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
         try:
             from src.report_generator import generate_static_review, generate_html_report
             
-            # 從 results 中提取分析數據（修正：results 本身就是包含 analysis_results 的字典）
-            analysis_results = results.get('analysis_results', [])
-            regime = results.get('regime', {})
+            # 從 deep_analysis.json 讀取分析數據（因為 results 沒有直接包含 analysis_results）
+            deep_analysis_path = DATA_DIR / 'deep_analysis.json'
+            if deep_analysis_path.exists():
+                deep_data = json.loads(deep_analysis_path.read_text(encoding='utf-8'))
+                analysis_results = deep_data.get('all_results', [])
+                regime = deep_data.get('regime', {})
+            else:
+                # fallback: 從 results 提取（如果有的話）
+                analysis_results = results.get('data', {}).get('stock_analysis', {}).get('all_results', [])
+                regime = results.get('data', {}).get('stock_analysis', {}).get('regime', {})
             
             if analysis_results or regime:
                 generate_static_review(analysis_results, regime)

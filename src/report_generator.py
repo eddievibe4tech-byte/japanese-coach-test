@@ -148,13 +148,13 @@ def _update_index_md(output_dir: str, latest_report_path: str, date_str: str,
     else:
         index_content += "*今日無分析數據*\n"
     
-    index_content += f"\n[查看完整報告]({os.path.basename(latest_report_path)})\n\n"
+    index_content += f"\n[👉 查看完整報告]({os.path.basename(latest_report_path)})\n\n"
     
     # 添加歷史記錄區段
     if not history_content:
         history_content = "\n## 📜 歷史報告\n\n"
     
-    # 添加新連結到歷史記錄開頭
+    # 添加新連結到歷史記錄開頭（使用正確的 Markdown 連結格式）
     history_content = history_content.replace(
         "## 📜 歷史報告",
         f"## 📜 歷史報告\n\n- [{date_str} 每日複盤]({os.path.basename(latest_report_path)})"
