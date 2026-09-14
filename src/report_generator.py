@@ -96,13 +96,13 @@ def _load_latest_analysis_result(data_dir: str) -> Optional[Dict]:
     
     json_files.sort(key=lambda x: os.path.getmtime(os.path.join(data_dir, x)), reverse=True)
     
-    # 驗證檔案結構，只回傳包含 'analysis_results' 的檔案
+    # 驗證檔案結構，只回傳包含 'all_results' 或 'analysis_results' 的檔案
     for name in json_files:
         try:
             file_path = os.path.join(data_dir, name)
             with open(file_path, 'r', encoding='utf-8') as f:
                 obj = json.load(f)
-            if isinstance(obj, dict) and 'analysis_results' in obj:
+            if isinstance(obj, dict) and ('all_results' in obj or 'analysis_results' in obj):
                 return obj
         except Exception:
             continue

@@ -459,6 +459,7 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
             (DATA_DIR / 'deep_analysis.json').write_text(
                 json.dumps(deep, ensure_ascii=False, indent=2), encoding='utf-8')
             results['data']['stock_analysis'] = deep
+            results['regime'] = regime  # ✅ 將 regime 存入 results 供報告生成使用
         
     if mode in ['full', 'risk']:
         logger.info("執行風險評估...")
@@ -476,6 +477,10 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
             # ✅ 直接使用記憶體中的 results 變數，避免讀取硬碟上的舊檔案
             analysis_results = results.get('analysis_results', [])
             regime = results.get('regime', {})
+            
+            # ✅ 正規化 regime：可能是字串（如 '震盪'），轉為 Dict
+            if isinstance(regime, str):
+                regime = {'regime': regime, 'confidence': '中'}
             
             if analysis_results or regime:
                 generate_static_review(analysis_results, regime)
