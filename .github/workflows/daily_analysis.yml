@@ -45,15 +45,20 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
 
       # ⚠️ 關鍵：將執行結果 (包含更新的 data/ 與新的 results/) 自動 Commit 回 Repo
+      - name: Generate Static Review Report
+        run: |
+          python -m src.main --mode full
+          # 靜態報告已在 main.py 中自動生成
+
       - name: Commit and Push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: daily analysis update [skip ci]"
+          commit_message: "chore: update daily analysis and static review [skip ci]"
           branch: main
           commit_user_name: "Sniper Bot"
           commit_user_email: "bot@sniper-system.com"
-          # ✅ 使用 '.' 提交所有追蹤中的檔案，依賴 .gitignore 排除 Log 與快取
-          file_pattern: '.'
+          # ✅ 確保把生成的 md/html 檔案 commit 回來
+          file_pattern: 'docs/*.md docs/*.html data/*.json results/*.json'
 
       - name: Upload Analysis Results (Backup)
         uses: actions/upload-artifact@v4

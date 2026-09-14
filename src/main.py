@@ -464,6 +464,22 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
     if mode in ['full', 'optimize']:
         logger.info("檢查是否需要優化 Prompt...")
         # TODO: 呼叫 Prompt Optimizer
+    
+    # ✅ 生成靜態報告（Markdown + HTML）供 GitHub Pages 展示
+    if mode in ['full', 'analysis']:
+        try:
+            from src.report_generator import generate_static_review, generate_html_report
+            
+            # 從 results 中提取分析數據
+            analysis_results = results.get('data', {}).get('analysis_results', [])
+            regime = results.get('data', {}).get('regime', {})
+            
+            if analysis_results or regime:
+                generate_static_review(analysis_results, regime)
+                generate_html_report(analysis_results, regime)
+                logger.info("✅ 靜態報告已生成至 docs/ 目錄")
+        except Exception as e:
+            logger.warning(f"生成靜態報告失敗：{e}")
 
     # 儲存結果 (使用台灣時間命名)
     output_file = RESULTS_DIR / f"analysis_{now.strftime('%Y%m%d_%H%M%S')}.json"
