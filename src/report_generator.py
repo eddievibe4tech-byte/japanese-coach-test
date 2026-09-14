@@ -204,7 +204,11 @@ def generate_html_report(
             rec = res.get('recommendation', '觀望')
             reason = res.get('reason', '無')[:80]
             
-            # 根據評分設定顏色
+            # 根據評分設定顏色（確保 score 是數值）
+            try:
+                score = int(res.get('ev_score', 0))
+            except (ValueError, TypeError):
+                score = 0
             color = "#28a745" if score >= 70 else "#ffc107" if score >= 50 else "#dc3545"
             
             table_rows += f"""

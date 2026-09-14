@@ -470,9 +470,9 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
         try:
             from src.report_generator import generate_static_review, generate_html_report
             
-            # 從 results 中提取分析數據
-            analysis_results = results.get('data', {}).get('analysis_results', [])
-            regime = results.get('data', {}).get('regime', {})
+            # 從 results 中提取分析數據（修正：results 本身就是包含 analysis_results 的字典）
+            analysis_results = results.get('analysis_results', [])
+            regime = results.get('regime', {})
             
             if analysis_results or regime:
                 generate_static_review(analysis_results, regime)
