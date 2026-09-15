@@ -248,7 +248,8 @@ class FinMindClient:
         net_margin = (net_income / revenue * 100) if revenue > 0 else None
         # EPS：保留負值（虧損是真實訊號），只有取不到時才設為 None
         raw_eps = latest.get('BasicEarningsPerShare')
-        eps_val = round(float(raw_eps), 2) if raw_eps not in (None, '', 0) else None
+        # 只有「欄位不存在 / 空字串」才算缺失；0.0 與負值都保留真實訊號
+        eps_val = round(float(raw_eps), 2) if raw_eps not in (None, '') else None
         
         return {
             'revenue': revenue if revenue > 0 else None,
