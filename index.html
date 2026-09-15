@@ -317,21 +317,46 @@
 
                 // 1. 更新卡片數據
                 if (metricsData) {
-                    // 🟡 修正：樣本不足時顯示「資料不足」而非 0.0%
+                    // 🟡 修正：準確率顯示邏輯優化
+                    // 當 verified_count 為 0 時，顯示「等待驗證中」而非 0% 或資料不足
                     const accRate = metricsData.accuracy_rate;
-                    if (accRate === null || accRate === undefined) {
+                    const verifiedCount = metricsData.verified_count || 0;
+                    
+                    if (verifiedCount === 0) {
+                        // 還沒有任何驗證完成的預測
+                        document.getElementById('accuracy').innerText = '⏳ 等待驗證中';
+                        document.getElementById('accuracy').className = 'text-3xl font-bold text-gray-500';
+                    } else if (accRate === null || accRate === undefined) {
+                        // 有驗證但樣本不足（理論上不會發生，因為 verified_count > 0 時應該有 accRate）
                         document.getElementById('accuracy').innerText = '資料不足';
+                        document.getElementById('accuracy').className = 'text-3xl font-bold text-gray-500';
                     } else {
+                        // 正常顯示準確率
                         document.getElementById('accuracy').innerText = accRate.toFixed(1) + '%';
+                        document.getElementById('accuracy').className = accRate >= 60 
+                            ? 'text-3xl font-bold text-green-600' 
+                            : 'text-3xl font-bold text-red-600';
                     }
+                    
                     document.getElementById('total-preds').innerText = metricsData.total_predictions || 0;
                     document.getElementById('prompt-version').innerText = 'V' + (metricsData.current_version || 1);
                     
                     const updateTime = metricsData.last_updated ? new Date(metricsData.last_updated).toLocaleString('zh-TW') : '未知';
                     document.getElementById('last-updated').innerText = `最後更新時間：${updateTime}`;
+                    
+                    // 🟡 新增：在準確率下方增加提示文字
+                    let accuracyHint = document.getElementById('accuracy-hint');
+                    if (!accuracyHint) {
+                        const hintEl = document.createElement('p');
+                        hintEl.id = 'accuracy-hint';
+                        hintEl.className = 'text-xs text-gray-500 mt-1';
+                        hintEl.innerText = '預測需經過 5 個交易日才會自動驗證';
+                        document.querySelector('#accuracy').parentNode.appendChild(hintEl);
+                    }
                 } else {
                     document.getElementById('last-updated').innerText = '最後更新時間：暫無數據 (檔案可能尚未生成)';
-                    document.getElementById('accuracy').innerText = '資料不足';
+                    document.getElementById('accuracy').innerText = '⏳ 等待驗證中';
+                    document.getElementById('accuracy').className = 'text-3xl font-bold text-gray-500';
                     document.getElementById('total-preds').innerText = telemetryData ? (telemetryData.records || []).length : 0;
                 }
                 
