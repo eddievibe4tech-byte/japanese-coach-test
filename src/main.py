@@ -255,6 +255,7 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
         
         all_results = []
         failed_count = 0
+        skipped_stocks = []  # 🔴 P0-2 修正：記錄被跳過的股票
         
         if stocks:
             finmind = FinMindClient()
@@ -266,12 +267,12 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
             for stock in stocks:
                 code = stock['code']
                 try:
-                    # ✅ 1. 初始化所有變數為安全預設值
+                    # ✅ 1. 初始化所有變數為安全預設值（🔴 P0-1 修正：財務欄位改為 None）
                     prices = []
                     revenue_yoy = 0.0
-                    gross_margin = 0.0
-                    net_margin = 0.0
-                    eps = 0.0
+                    gross_margin = None  # 🔴 改為 None，避免評分失真
+                    net_margin = None    # 🔴 改為 None，避免評分失真
+                    eps = None           # 🔴 改為 None，避免評分失真
                     inst_buy_days = 0
                     margin_change = 0
                     ma5, ma20, rsi, macd = 0.0, 0.0, 50.0, 0.0
@@ -288,12 +289,21 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                         
                         # 財報數據
                         try:
-                            financials = finmind.get_financial_statements(code) or {}
-                            gross_margin = financials.get('gross_margin', 0.0)
-                            net_margin = financials.get('net_margin', 0.0)
-                            eps = financials.get('eps', 0.0)
+                            financials = finmind.get_financial_statements(code)
+                            if financials:
+                                gross_margin = financials.get('gross_margin')
+                                net_margin = financials.get('net_margin')
+                                eps = financials.get('eps')
+                            else:
+                                # 🔴 P0-1 修正：取不到財報時設為 None，讓 prompt 顯示 '-'
+                                gross_margin = None
+                                net_margin = None
+                                eps = None
                         except Exception as e:
                             logger.warning(f"{code} 財報數據抓取失敗，使用預設值：{e}")
+                            gross_margin = None
+                            net_margin = None
+                            eps = None
                         
                         # 技術指標
                         try:
@@ -436,13 +446,34 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                 except Exception as e:
                     logger.error(f"分析 {code} 完全失敗：{e}")
                     failed_count += 1
+                    # 🔴 P0-2 修正：記錄被跳過的股票與原因
+                    skipped_stocks.append({"code": code, "name": stock.get('name', ''), "error": str(e)})
+                
+                # 🔴 P1 加固：檢查部分失敗（關鍵欄位全缺）
+                if code not in [s.get('code') for s in skipped_stocks]:
+                    partial_issues = []
+                    if gross_margin is None and net_margin is None and eps is None:
+                        partial_issues.append("財報全缺")
+                    if not prices:
+                        partial_issues.append("無股價資料")
+                    if partial_issues:
+                        skipped_stocks.append({
+                            "code": code,
+                            "name": stock.get('name', ''),
+                            "error": "部分失敗：" + ", ".join(partial_issues)
+                        })
+                        logger.warning(f"{code}: {partial_issues}")
             
+            # 🔴 P0-2 修正：輸出 skipped 清單，避免靜默丟股
+            if skipped_stocks:
+                logger.warning(f"共有 {len(skipped_stocks)} 檔股票被跳過：{skipped_stocks}")
             # 🔴 修正：一次性寫入 telemetry (批次處理)
             if 'metadata' not in telemetry_data:
                 telemetry_data['metadata'] = {}
             
             telemetry_data['metadata']['created_at'] = telemetry_data['metadata'].get('created_at') or now.isoformat()
             telemetry_data['metadata']['total_records'] = len(telemetry_data['records'])
+            telemetry_data['metadata']['skipped_stocks'] = skipped_stocks  # 🔴 P0-2 新增
             telemetry_path.write_text(json.dumps(telemetry_data, ensure_ascii=False, indent=2), encoding='utf-8')
             
             # 🔴 修正：呼叫績效指標更新函數
@@ -455,7 +486,7 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
             
             deep = {'analyzed_at': now.isoformat(), 'regime': regime,
                     'high_score_targets': [r for r in all_results if (r.get('ev_score') or 0) >= 70],
-                    'all_results': all_results}
+                    'all_results': all_results, 'skipped_stocks': skipped_stocks}
             (DATA_DIR / 'deep_analysis.json').write_text(
                 json.dumps(deep, ensure_ascii=False, indent=2), encoding='utf-8')
             results['data']['stock_analysis'] = deep
