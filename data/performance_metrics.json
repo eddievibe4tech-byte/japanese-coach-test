@@ -1,13 +1,13 @@
 {
-  "total_predictions": 94,
+  "total_predictions": 108,
   "verified_count": 0,
   "accuracy_rate": "資料不足",
   "current_version": 1,
-  "last_updated": "2026-09-15T22:13:01.665038+08:00",
+  "last_updated": "2026-09-15T22:57:22.560957+08:00",
   "version_stats": [
     {
       "version": 1,
-      "predictions": 94,
+      "predictions": 108,
       "correct": 0,
       "accuracy": 0.0
     }
