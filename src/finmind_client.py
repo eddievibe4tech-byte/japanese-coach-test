@@ -229,7 +229,7 @@ class FinMindClient:
             days: 日期範圍天數
             
         Returns:
-            包含最新財報數據的字典
+            包含最新財報數據的字典，取不到時回傳 None（而非 0.0）
         """
         data = self._make_request('FinancialStatements', code, days=days)
         if not data:
@@ -242,11 +242,16 @@ class FinMindClient:
         net_income = latest.get('NetIncome', 0) or 0
         eps = latest.get('BasicEarningsPerShare', 0) or 0
         
+        # 🔴 P0-1 修正：取不到數據時回傳 None，讓前端/prompt 顯示 '-'
+        gross_margin = (gross_profit / revenue * 100) if revenue > 0 else None
+        net_margin = (net_income / revenue * 100) if revenue > 0 else None
+        eps_val = eps if eps > 0 else None
+        
         return {
-            'revenue': revenue,
-            'gross_margin': (gross_profit / revenue * 100) if revenue > 0 else 0,
-            'net_margin': (net_income / revenue * 100) if revenue > 0 else 0,
-            'eps': eps,
+            'revenue': revenue if revenue > 0 else None,
+            'gross_margin': round(gross_margin, 2) if gross_margin is not None else None,
+            'net_margin': round(net_margin, 2) if net_margin is not None else None,
+            'eps': eps_val,
         }
     
     def get_technical_indicators(self, code: str) -> Dict:
