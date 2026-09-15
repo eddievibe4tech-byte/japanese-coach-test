@@ -448,6 +448,21 @@ def run_daily_analysis(mode: str = 'full') -> Dict:
                     failed_count += 1
                     # 🔴 P0-2 修正：記錄被跳過的股票與原因
                     skipped_stocks.append({"code": code, "name": stock.get('name', ''), "error": str(e)})
+                
+                # 🔴 P1 加固：檢查部分失敗（關鍵欄位全缺）
+                if code not in [s.get('code') for s in skipped_stocks]:
+                    partial_issues = []
+                    if gross_margin is None and net_margin is None and eps is None:
+                        partial_issues.append("財報全缺")
+                    if not prices:
+                        partial_issues.append("無股價資料")
+                    if partial_issues:
+                        skipped_stocks.append({
+                            "code": code,
+                            "name": stock.get('name', ''),
+                            "error": "部分失敗：" + ", ".join(partial_issues)
+                        })
+                        logger.warning(f"{code}: {partial_issues}")
             
             # 🔴 P0-2 修正：輸出 skipped 清單，避免靜默丟股
             if skipped_stocks:

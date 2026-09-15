@@ -243,9 +243,12 @@ class FinMindClient:
         eps = latest.get('BasicEarningsPerShare', 0) or 0
         
         # 🔴 P0-1 修正：取不到數據時回傳 None，讓前端/prompt 顯示 '-'
+        # 毛利率/淨利率：營收為 0 或負時無法計算，設為 None
         gross_margin = (gross_profit / revenue * 100) if revenue > 0 else None
         net_margin = (net_income / revenue * 100) if revenue > 0 else None
-        eps_val = eps if eps > 0 else None
+        # EPS：保留負值（虧損是真實訊號），只有取不到時才設為 None
+        raw_eps = latest.get('BasicEarningsPerShare')
+        eps_val = round(float(raw_eps), 2) if raw_eps not in (None, '', 0) else None
         
         return {
             'revenue': revenue if revenue > 0 else None,
