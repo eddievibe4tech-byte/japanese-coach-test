@@ -74,7 +74,7 @@ def get_all_taiwan_stocks(finmind: FinMindClient) -> List[Dict]:
     取得全市場股票清單（過濾掉 ETF 與權證）
     """
     try:
-        data = finmind._make_request('TaiwanStockInfo', '') or []
+        data = finmind.get_stock_list() or []
     except Exception as e:
         print(f"⚠️ 獲取股票清單失敗：{e}")
         data = []
@@ -92,12 +92,13 @@ def get_all_taiwan_stocks(finmind: FinMindClient) -> List[Dict]:
                 'industry': industry
             })
     
-    if not stocks:
-        print("⚠️ API 無回傳，使用預設活躍股清單進行海選...")
+    # P1-1 防禦：若股票數量異常少，發出警告並使用預設清單
+    if len(stocks) < 500:
+        print(f"⚠️ 警告：股票宇宙只有 {len(stocks)} 檔（正常應 >1700），使用預設活躍股清單...")
         fallback_codes = ["2330", "2317", "2382", "2308", "2454", "2881", "2882", "3711", "3017", "1504", 
                           "1519", "2303", "2412", "2002", "2884", "2885", "2886", "2890", "2891", "2892"]
         stocks = [{'stock_id': code, 'stock_name': code, 'industry': '預設'} for code in fallback_codes]
-        
+    
     print(f"✅ 載入 {len(stocks)} 檔台股")
     return stocks
 
@@ -121,24 +122,20 @@ def _screen_with_rules(finmind: FinMindClient, rules: Dict, info: Dict) -> List[
     pool = [c for c in pool if streak[c] >= rules["inst_buy_days_min"]]
     print(f"  關卡 2 投信連買>={rules['inst_buy_days_min']}天：剩 {len(pool)} 檔")
 
-    # 關卡 3：股價 vs MA20（可選）
+    # 關卡 3：股價 vs MA20（可選）— P0-2 修正：使用 _get_raw_prices 直接取價格陣列
     pool.sort(key=lambda c: (yoy[c], streak[c]), reverse=True)
     candidates = []
     for code in pool[:rules["max_price_checks"]]:
         try:
-            pd_ = finmind.get_stock_price(code)
-            if not pd_:
+            prices = finmind._get_raw_prices(code, days=60)
+            if len(prices) < 20:
                 continue
             
-            if rules["price_above_ma20"]:
-                hist = pd_.get('price_history', [])
-                if len(hist) < 20:
-                    continue
-                ma20 = sum(hist[-20:]) / 20
-                if pd_['current_price'] < ma20:
-                    continue
-            else:
-                ma20 = pd_.get('ma20', 0)
+            ma20 = sum(prices[-20:]) / 20
+            current = prices[-1]
+            
+            if rules["price_above_ma20"] and current < ma20:
+                continue
             
             s = info.get(code, {})
             candidates.append({
@@ -147,7 +144,7 @@ def _screen_with_rules(finmind: FinMindClient, rules: Dict, info: Dict) -> List[
                 "industry": s.get('industry', '未知'),
                 "revenue_yoy": round(yoy[code], 2),
                 "inst_buy_days": streak[code],
-                "current_price": round(pd_.get('current_price', 0), 2),
+                "current_price": round(current, 2),
                 "ma20": round(ma20, 2),
                 "screened_at": datetime.now().strftime('%Y-%m-%d'),
             })
@@ -166,11 +163,13 @@ def run_weekly_screener(finmind: FinMindClient) -> List[Dict]:
     
     # 第一輪：嚴格條件
     candidates = _screen_with_rules(finmind, STRICT_RULES, info)
+    rules_used = "STRICT"
     
     # 如果 0 檔，自動放寬條件重跑
     if not candidates:
         print("⚠️ 嚴格條件無候選股，自動放寬條件重跑...")
         candidates = _screen_with_rules(finmind, RELAXED_RULES, info)
+        rules_used = "RELAXED"
         
         if candidates:
             print(f"✅ 放寬條件後找到 {len(candidates)} 檔候選股")
@@ -178,16 +177,16 @@ def run_weekly_screener(finmind: FinMindClient) -> List[Dict]:
     # 如果還是 0 檔，接受空結果（不中斷 workflow）
     if not candidates:
         print("⚠️ 本週市場環境嚴峻，無符合條件的候選股")
-        save_screener_results([])
+        save_screener_results([], "NONE (market too weak)")
         return []
     
     top = candidates[:15]
-    save_screener_results(top)
+    save_screener_results(top, rules_used)
     print(f"✅ 海選完成：{len(top)} 檔候選")
     return top
 
 
-def save_screener_results(candidates: List[Dict]) -> None:
+def save_screener_results(candidates: List[Dict], rules_applied: str = "STRICT") -> None:
     data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
     output_path = os.path.join(data_dir, 'screener_candidates.json')
@@ -196,7 +195,7 @@ def save_screener_results(candidates: List[Dict]) -> None:
         json.dump({
             "candidates": candidates,
             "updated_at": datetime.now().isoformat(),
-            "rules_applied": "STRICT→RELAXED (auto)" if len(candidates) > 0 else "NONE (market too weak)"
+            "rules_applied": rules_applied
         }, f, ensure_ascii=False, indent=2)
     
     print(f"📁 結果已儲存至：{output_path}")

@@ -44,9 +44,10 @@ def run_crypto_screener() -> List[Dict]:
     market_data = client.get_market_data(WATCHLIST)
     if not market_data:
         print("❌ 無法取得市場數據")
+        save_crypto_results([], fng)  # P2: 失敗時也存檔，避免儀表板讀到舊資料
         return []
     
-    # 3. 篩選
+    # 3. 篩選 + P1-2: 加 time.sleep 避免 CoinGecko 429
     candidates = []
     for coin_id, data in market_data.items():
         # 市值篩選
@@ -55,6 +56,7 @@ def run_crypto_screener() -> List[Dict]:
         
         # 技術指標
         tech = client.get_technical_indicators(coin_id)
+        time.sleep(1)  # P1-2: 避免 rate limit
         
         # RSI 篩選
         if tech['rsi'] > CRYPTO_RULES['rsi_max']:
@@ -79,8 +81,8 @@ def run_crypto_screener() -> List[Dict]:
             'screened_at': datetime.now().strftime('%Y-%m-%d %H:%M')
         })
     
-    # 排序：7 日漲幅最強 + RSI 最低（還有上漲空間）
-    candidates.sort(key=lambda x: (x['change_7d'], -x['rsi']), reverse=True)
+    # P2 修正：排序邏輯改為單一維度（7 日漲幅）
+    candidates.sort(key=lambda x: x['change_7d'], reverse=True)
     
     top = candidates[:10]
     save_crypto_results(top, fng)

@@ -3,6 +3,7 @@
 使用免費 API：CoinGecko + Alternative.me Fear & Greed Index
 """
 import requests
+import time
 from typing import Dict, List
 from datetime import datetime
 
@@ -28,7 +29,8 @@ class CryptoClient:
             coin_ids = ['bitcoin', 'ethereum', 'solana']
         
         ids_str = ','.join(coin_ids)
-        url = f"https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={ids_str}"
+        # P1-2 修正：明確要求 24h 和 7d 漲跌幅
+        url = f"https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={ids_str}&price_change_percentage=24h,7d"
         
         try:
             response = self.session.get(url, timeout=10)
@@ -42,7 +44,7 @@ class CryptoClient:
                     'name': coin['name'],
                     'price': coin['current_price'],
                     'market_cap': coin['market_cap'],
-                    'change_24h': coin['price_change_percentage_24h'],
+                    'change_24h': coin.get('price_change_percentage_24h', 0),
                     'change_7d': coin.get('price_change_percentage_7d_in_currency', 0),
                     'volume_24h': coin['total_volume'],
                 }
@@ -77,13 +79,15 @@ class CryptoClient:
         
         return {'value': 50, 'classification': 'Neutral'}
     
-    def get_technical_indicators(self, coin_id: str, days: int = 30) -> Dict:
+    def get_technical_indicators(self, coin_id: str, days: int = 120) -> Dict:
         """
         計算技術指標（MA、RSI）— 使用 CoinGecko 歷史價格
         
+        P1-2 修正：days >= 91 才會回傳日線數據（<91 為小時線）
+        
         Args:
             coin_id: 加密貨幣 ID
-            days: 歷史天數
+            days: 歷史天數（建議 >= 91 以取得日線）
             
         Returns:
             {ma7, ma20, rsi, price_above_ma20}

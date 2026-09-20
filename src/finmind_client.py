@@ -29,14 +29,16 @@ class FinMindClient:
             'Content-Type': 'application/json'
         })
     
-    def _make_request(self, dataset: str, stock_id: str, days: int = 60) -> Optional[List[Dict]]:
+    def _make_request(self, dataset: str, stock_id: str, days: int = 60, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Optional[List[Dict]]:
         """
         發送 API 請求
         
         Args:
             dataset: 數據集名稱
             stock_id: 股票代號（v4 用 data_id）
-            days: 日期範圍天數
+            days: 日期範圍天數（當 start_date/end_date 未提供時使用）
+            start_date: 開始日期（格式：YYYY-MM-DD），優先於 days
+            end_date: 結束日期（格式：YYYY-MM-DD），優先於 days
             
         Returns:
             API 回應資料（data 陣列），失敗時返回 None
@@ -44,14 +46,21 @@ class FinMindClient:
         if not self.token:
             raise ValueError("FinMind Token 未設定")
         
-        end = datetime.now()
-        start = end - timedelta(days=days)
+        # 若有提供 start_date/end_date 則使用，否則用 days 計算
+        if start_date and end_date:
+            start_d = start_date
+            end_d = end_date
+        else:
+            end = datetime.now()
+            start = end - timedelta(days=days)
+            start_d = start.strftime('%Y-%m-%d')
+            end_d = end.strftime('%Y-%m-%d')
         
         request_params = {
             'dataset': dataset,
             'data_id': stock_id,
-            'start_date': start.strftime('%Y-%m-%d'),
-            'end_date': end.strftime('%Y-%m-%d'),
+            'start_date': start_d,
+            'end_date': end_d,
             'token': self.token,
         }
         
@@ -177,6 +186,36 @@ class FinMindClient:
         
         # 回傳增減張數 (FinMind 單位通常是張)
         return int(today_balance - yesterday_balance)
+    
+    def get_stock_list(self) -> List[Dict]:
+        """
+        取得全台灣股票清單（不走日期範圍，避免被過濾）
+        
+        Returns:
+            股票清單列表
+        """
+        if not self.token:
+            raise ValueError("FinMind Token 未設定")
+        
+        params = {
+            'dataset': 'TaiwanStockInfo',
+            'data_id': '',
+            'token': self.token,
+        }
+        
+        try:
+            response = self.session.get(self.base_url, params=params, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            
+            if data.get('status') == 200:
+                return data.get('data', [])
+            else:
+                logger.error(f"TaiwanStockInfo 失敗：{data.get('status')}")
+                return []
+        except Exception as e:
+            logger.error(f"取得股票清單失敗：{e}")
+            return []
     
     def _get_raw_prices(self, stock_id: str, days: int = 60) -> List[float]:
         """內部使用：取得原始收盤價陣列"""
