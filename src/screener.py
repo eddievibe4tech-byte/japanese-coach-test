@@ -1,37 +1,79 @@
 """
-台股海選引擎 (Screener)
-對標 Finviz 的全市場硬規則篩選模組
+台股海選引擎 (Screener) - 方案 C 混合版
+動態條件調整 + 空結果容錯
 """
-import pandas as pd
 import json
 import os
 import time
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict
 from finmind_client import FinMindClient
 
-# 海選條件 (對標 Alpha Picks 的量化邏輯)
-SCREENER_RULES = {
-    "market_cap_min": 100,      # 市值 > 100億 (避開流動性差的迷你股)
-    "revenue_yoy_min": 15.0,    # 營收年增率 > 15% (成長動能)
-    "inst_buy_days_min": 3,     # 投信連買 > 3天 (法人認同)
-    "price_above_ma20": True    # 股價站上 20日均線 (右側多頭)
+# 嚴格條件（多頭市場）
+STRICT_RULES = {
+    "revenue_yoy_min": 15.0,
+    "inst_buy_days_min": 3,
+    "price_above_ma20": True,
+    "max_price_checks": 60,
+    "sleep_seconds": 0.5,
 }
+
+# 放寬條件（震盪/空頭市場）
+RELAXED_RULES = {
+    "revenue_yoy_min": 10.0,
+    "inst_buy_days_min": 2,
+    "price_above_ma20": False,
+    "max_price_checks": 60,
+    "sleep_seconds": 0.5,
+}
+
+
+def _latest_rev_month(today):
+    """月營收約於次月 10 日公佈 → 取最近已公佈月份"""
+    y, m = today.year, today.month - (1 if today.day >= 10 else 2)
+    while m <= 0:
+        m += 12
+        y -= 1
+    return y, m
+
+
+def fetch_month_revenue(finmind, y, m):
+    """取得指定月份的營收數據"""
+    data = finmind._make_request('TaiwanStockMonthRevenue', '',
+                                 start_date=f"{y}-{m:02d}-01",
+                                 end_date=f"{y}-{m:02d}-31") or []
+    return {r['stock_id']: r['revenue'] for r in data if r.get('revenue')}
+
+
+def fetch_inst_streak(finmind, codes, lookback):
+    """逐日批量抓全市場投信買賣超，回傳各檔連買天數"""
+    days, d = [], datetime.now()
+    while len(days) < lookback:
+        d -= timedelta(days=1)
+        if d.weekday() < 5:
+            days.append(d.strftime('%Y-%m-%d'))
+    
+    streak, stopped = {c: 0 for c in codes}, set()
+    for day in days:
+        data = finmind._make_request('TaiwanStockInstitutionalInvestorsBuySell', '',
+                                     start_date=day, end_date=day) or []
+        net = {r['stock_id']: r.get('Investment_Trust_net', 0) for r in data}
+        for c in codes:
+            if c in stopped:
+                continue
+            if net.get(c, 0) > 0:
+                streak[c] += 1
+            else:
+                stopped.add(c)
+        time.sleep(0.3)
+    return streak
 
 
 def get_all_taiwan_stocks(finmind: FinMindClient) -> List[Dict]:
     """
     取得全市場股票清單（過濾掉 ETF 與權證）
-    
-    Args:
-        finmind: FinMind 客戶端
-        
-    Returns:
-        股票清單列表
     """
-    # 使用 FinMind 的 TaiwanStockInfo API (修正：TaiwanStockInfoWithWarrant 不存在)
     try:
-        # 移除 days=1，改用標準呼叫
         data = finmind._make_request('TaiwanStockInfo', '') or []
     except Exception as e:
         print(f"⚠️ 獲取股票清單失敗：{e}")
@@ -43,7 +85,6 @@ def get_all_taiwan_stocks(finmind: FinMindClient) -> List[Dict]:
         stock_name = item.get('stock_name', '')
         industry = item.get('industry_category', '未知')
         
-        # 過濾：只保留一般股票（排除 ETF、權證等）
         if len(stock_id) == 4 and stock_id.isdigit():
             stocks.append({
                 'stock_id': stock_id,
@@ -51,134 +92,120 @@ def get_all_taiwan_stocks(finmind: FinMindClient) -> List[Dict]:
                 'industry': industry
             })
     
-    # 🟡 P2 優化：如果 API 失敗或回傳空，使用預設的 Top 50 活躍股清單確保系統能跑
     if not stocks:
         print("⚠️ API 無回傳，使用預設活躍股清單進行海選...")
         fallback_codes = ["2330", "2317", "2382", "2308", "2454", "2881", "2882", "3711", "3017", "1504", 
                           "1519", "2303", "2412", "2002", "2884", "2885", "2886", "2890", "2891", "2892"]
-        # 這裡可以簡單回傳代號，名稱留空或後續再補
         stocks = [{'stock_id': code, 'stock_name': code, 'industry': '預設'} for code in fallback_codes]
         
     print(f"✅ 載入 {len(stocks)} 檔台股")
     return stocks
 
 
-def run_weekly_screener(finmind: FinMindClient) -> List[Dict]:
-    """
-    執行每週海選，找出符合硬規則的 Alpha 候選股
+def _screen_with_rules(finmind: FinMindClient, rules: Dict, info: Dict) -> List[Dict]:
+    """使用指定規則進行海選"""
+    print(f"🔍 啟動海選引擎（營收>{rules['revenue_yoy_min']}%, 投信>{rules['inst_buy_days_min']}天，MA20={rules['price_above_ma20']}）...")
     
-    Args:
-        finmind: FinMind 客戶端
-        
-    Returns:
-        候選股清單（已排序）
-    """
-    print("🔍 啟動全市場海選引擎 (台股版 Finviz)...")
-    
-    # 1. 獲取全市場股票清單
-    all_stocks = get_all_taiwan_stocks(finmind)
-    
+    # 關卡 1：營收 YoY
+    today = datetime.now()
+    y, m = _latest_rev_month(today)
+    rev_now = fetch_month_revenue(finmind, y, m)
+    rev_past = fetch_month_revenue(finmind, y - 1, m)
+    yoy = {c: (rev_now[c] - rev_past[c]) / rev_past[c] * 100
+           for c in rev_now if rev_past.get(c)}
+    pool = [c for c, v in yoy.items() if v >= rules["revenue_yoy_min"]]
+    print(f"  關卡 1 營收 YoY>{rules['revenue_yoy_min']}%：剩 {len(pool)} 檔")
+
+    # 關卡 2：投信連買
+    streak = fetch_inst_streak(finmind, pool, rules.get("inst_lookback_days", 10))
+    pool = [c for c in pool if streak[c] >= rules["inst_buy_days_min"]]
+    print(f"  關卡 2 投信連買>={rules['inst_buy_days_min']}天：剩 {len(pool)} 檔")
+
+    # 關卡 3：股價 vs MA20（可選）
+    pool.sort(key=lambda c: (yoy[c], streak[c]), reverse=True)
     candidates = []
-    processed = 0
-    
-    # 2. 迴圈檢查 (加入 Rate Limit 控制)
-    # 測試期先跑前 200 檔活躍股，避免 API 超時
-    for stock in all_stocks[:200]:
-        code = stock['stock_id']
-        processed += 1
-        
-        if processed % 20 == 0:
-            print(f"  處理中：{processed}/{min(200, len(all_stocks))} ({len(candidates)} 檔入選)")
-        
+    for code in pool[:rules["max_price_checks"]]:
         try:
-            # A. 檢查營收年增率 (使用既有的 get_revenue 方法)
-            revenue_data = finmind.get_revenue(code)
-            if not revenue_data:
-                continue
-            rev_yoy = revenue_data.get('yoy_growth', 0)
-            if rev_yoy < SCREENER_RULES["revenue_yoy_min"]:
-                continue
-                
-            # B. 檢查籌碼（投信連買天數）(使用既有的 get_institutional_buy 方法)
-            inst_days = finmind.get_institutional_buy(code, days=10)
-            if inst_days < SCREENER_RULES["inst_buy_days_min"]:
-                continue
-                
-            # C. 檢查技術面 (MA20) (使用既有的 get_stock_price 方法)
-            prices = finmind.get_stock_price(code, days=30)
-            if not prices or len(prices) < 20:
+            pd_ = finmind.get_stock_price(code)
+            if not pd_:
                 continue
             
-            current_price = prices[-1]
-            ma20 = sum(prices[-20:]) / 20
-            if current_price < ma20:
-                continue
-                
-            # 通過所有硬規則，加入候選池
+            if rules["price_above_ma20"]:
+                hist = pd_.get('price_history', [])
+                if len(hist) < 20:
+                    continue
+                ma20 = sum(hist[-20:]) / 20
+                if pd_['current_price'] < ma20:
+                    continue
+            else:
+                ma20 = pd_.get('ma20', 0)
+            
+            s = info.get(code, {})
             candidates.append({
                 "code": code,
-                "name": stock['stock_name'],
-                "industry": stock.get('industry', '未知'),
-                "revenue_yoy": round(rev_yoy, 2),
-                "inst_buy_days": inst_days,
-                "current_price": round(current_price, 2),
+                "name": s.get('stock_name', code),
+                "industry": s.get('industry', '未知'),
+                "revenue_yoy": round(yoy[code], 2),
+                "inst_buy_days": streak[code],
+                "current_price": round(pd_.get('current_price', 0), 2),
                 "ma20": round(ma20, 2),
-                "screened_at": datetime.now().strftime('%Y-%m-%d')
+                "screened_at": datetime.now().strftime('%Y-%m-%d'),
             })
-            
         except Exception as e:
-            print(f"  ⚠️ 檢查 {code} 時出錯：{e}")
-            continue
+            print(f"  ⚠️ {code} 股價檢查失敗：{e}")
         finally:
-            # 🟠 P1 修正：避免觸發 FinMind API Rate Limit (每 1.5 秒呼叫一次)
-            time.sleep(1.5)
-    
-    # 排序：營收成長最強 + 籌碼最乾淨的排前面
+            time.sleep(rules["sleep_seconds"])
+
     candidates.sort(key=lambda x: (x['revenue_yoy'], x['inst_buy_days']), reverse=True)
+    return candidates
+
+
+def run_weekly_screener(finmind: FinMindClient) -> List[Dict]:
+    """方案 C 混合版：動態條件 + 空結果容錯"""
+    info = {s['stock_id']: s for s in get_all_taiwan_stocks(finmind)}
     
-    # 只取前 15 名進入體檢階段
-    top_candidates = candidates[:15]
+    # 第一輪：嚴格條件
+    candidates = _screen_with_rules(finmind, STRICT_RULES, info)
     
-    # 3. 輸出候選清單
-    save_screener_results(top_candidates)
-    print(f"✅ 海選完成，共找出 {len(top_candidates)} 檔 Alpha 候選股")
+    # 如果 0 檔，自動放寬條件重跑
+    if not candidates:
+        print("⚠️ 嚴格條件無候選股，自動放寬條件重跑...")
+        candidates = _screen_with_rules(finmind, RELAXED_RULES, info)
+        
+        if candidates:
+            print(f"✅ 放寬條件後找到 {len(candidates)} 檔候選股")
     
-    return top_candidates
+    # 如果還是 0 檔，接受空結果（不中斷 workflow）
+    if not candidates:
+        print("⚠️ 本週市場環境嚴峻，無符合條件的候選股")
+        save_screener_results([])
+        return []
+    
+    top = candidates[:15]
+    save_screener_results(top)
+    print(f"✅ 海選完成：{len(top)} 檔候選")
+    return top
 
 
 def save_screener_results(candidates: List[Dict]) -> None:
-    """
-    儲存海選結果到 JSON 檔案
-    
-    Args:
-        candidates: 候選股清單
-    """
     data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
-    
     output_path = os.path.join(data_dir, 'screener_candidates.json')
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump({
             "candidates": candidates,
             "updated_at": datetime.now().isoformat(),
-            "rules_applied": SCREENER_RULES
+            "rules_applied": "STRICT→RELAXED (auto)" if len(candidates) > 0 else "NONE (market too weak)"
         }, f, ensure_ascii=False, indent=2)
     
     print(f"📁 結果已儲存至：{output_path}")
 
 
 if __name__ == "__main__":
-    # 🟢 修法 C：多重讀取環境變數，相容多種可能的 Secret 名稱
-    token = (
-        os.getenv('FINMIND_TOKEN')
-        or os.getenv('FINMIND_API_TOKEN')
-        or os.getenv('FINMIND_API_KEY')
-        or ''
-    )
-    
+    token = os.getenv('FINMIND_TOKEN', '')
     if not token:
-        print("⚠️ 警告：未設定 FINMIND_TOKEN / FINMIND_API_TOKEN / FINMIND_API_KEY，請從環境變數提供")
+        print("⚠️ 警告：未設定 FINMIND_TOKEN")
         exit(1)
     
     client = FinMindClient(token=token)
@@ -186,4 +213,4 @@ if __name__ == "__main__":
     
     print("\n🎯 本週 Alpha 候選股 Top 5:")
     for i, stock in enumerate(candidates[:5], 1):
-        print(f"  {i}. {stock['code']} {stock['name']} - 營收成長 {stock['revenue_yoy']}%, 投信連買 {stock['inst_buy_days']} 天")
+        print(f"  {i}. {stock['code']} {stock['name']} - 營收 {stock['revenue_yoy']}%, 投信 {stock['inst_buy_days']} 天")
