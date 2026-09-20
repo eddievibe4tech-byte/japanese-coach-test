@@ -880,11 +880,19 @@
                 if (!res.ok) throw new Error('No crypto data');
                 const data = await res.json();
                 
+                // P0-2 修正：如果沒有候選，顯示市場層級情境
                 if (!data.candidates || data.candidates.length === 0) {
-                    const fngMsg = data.fear_greed_index?.value > 75 
-                        ? `本週加密貨幣市場極度貪婪（FNG=${data.fear_greed_index.value}），建議觀望。`
-                        : '暫無符合條件的加密貨幣候選。';
-                    document.getElementById('crypto-table').innerHTML = `<p class="text-gray-500 text-center py-4">${fngMsg}</p>`;
+                    const ms = data.market_scenario;
+                    let msg;
+                    if (ms) {
+                        // 有 market_scenario 時顯示完整策略
+                        msg = `市場情境：<span class="font-bold">${escapeHTML(ms.scenario)}</span> — ${escapeHTML(ms.recommendation)}；${escapeHTML(ms.take_profit || '不適用')}`;
+                    } else if (data.fear_greed_index?.value > 75) {
+                        msg = `本週加密貨幣市場極度貪婪（FNG=${data.fear_greed_index.value}），建議觀望。`;
+                    } else {
+                        msg = '暫無符合條件的加密貨幣候選。';
+                    }
+                    document.getElementById('crypto-table').innerHTML = `<p class="text-gray-500 text-center py-4">${msg}</p>`;
                     return;
                 }
 
@@ -893,15 +901,21 @@
                 html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">價格</th>';
                 html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">7 日漲跌</th>';
                 html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">RSI</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">情境標籤</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">建議</th>';
                 html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">外部工具</th></tr></thead><tbody>';
 
                 data.candidates.forEach(c => {
                     const changeClass = c.change_7d >= 0 ? 'text-green-600' : 'text-red-600';
+                    // P1-1 修正：前端統一使用 renderScenarioBadge 產生樣式標籤
+                    const badgeHtml = renderScenarioBadge(c.scenario);
                     html += `<tr class="hover:bg-gray-50">
                         <td class="px-4 py-3 text-sm font-bold">${escapeHTML(c.symbol)}</td>
                         <td class="px-4 py-3 text-sm">$${c.price.toFixed(2)}</td>
                         <td class="px-4 py-3 text-sm ${changeClass}">${c.change_7d >= 0 ? '+' : ''}${c.change_7d.toFixed(2)}%</td>
                         <td class="px-4 py-3 text-sm">${c.rsi}</td>
+                        <td class="px-4 py-3 text-sm">${badgeHtml}</td>
+                        <td class="px-4 py-3 text-sm">${escapeHTML(c.recommendation || '-')}</td>
                         <td class="px-4 py-3 text-sm">
                             <a href="https://www.coingecko.com/en/coins/${c.coin_id}" target="_blank" class="text-blue-600 hover:underline">CoinGecko</a>
                         </td>
@@ -913,6 +927,25 @@
                 console.warn('Crypto 資料載入失敗:', e);
                 document.getElementById('crypto-table').innerHTML = '<p class="text-gray-500 text-center py-4">暫無加密貨幣數據</p>';
             }
+        }
+
+        // 🟢 P1-1 修正：統一情境標籤樣式映射（避免前後端邏輯漂移）
+        function renderScenarioBadge(scenario) {
+            const styles = {
+                '黃金買點': 'bg-green-100 text-green-800',
+                '右側確認': 'bg-blue-100 text-blue-800',
+                '反彈陷阱': 'bg-yellow-100 text-yellow-800',
+                '極度危險': 'bg-red-100 text-red-800',
+            };
+            const cls = styles[scenario] || 'bg-gray-100 text-gray-800';
+            const emoji = {
+                '黃金買點': '🟢',
+                '右側確認': '🔵',
+                '反彈陷阱': '⚠️',
+                '極度危險': '🔴',
+            };
+            const emojiChar = emoji[scenario] || '⚪';
+            return `<span class="px-2 py-1 ${cls} rounded text-xs font-bold">${emojiChar} ${escapeHTML(scenario || '中性')}</span>`;
         }
         
         // 🟠 P1 修正：使用安全的事件監聽器綁定，避免覆寫常數變數
