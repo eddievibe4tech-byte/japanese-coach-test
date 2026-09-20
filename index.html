@@ -286,9 +286,7 @@
                     
                     // 渲染表格
                     renderAnalysisTable(deep.all_results);
-                    
-                    // 計算準確率統計
-                    calculateAccuracyStats(metricsData, telemetryData);
+                    // ❌ 已移除：calculateAccuracyStats(metricsData, telemetryData); - 移至變數宣告後
                 } else {
                     document.getElementById('analysis-table').innerHTML = '<tr><td colspan="9" class="px-4 py-4 text-center text-gray-500">暫無分析數據</td></tr>';
                 }
@@ -323,6 +321,10 @@
                     };
                     console.log('使用 telemetry fallback 計算 metrics');
                 }
+
+                // ✅ 修正：變數已定義後才計算準確率統計
+                //    傳 null 強制走 telemetry 路徑（performance_metrics.json 目前沒有 correct_count 欄位）
+                calculateAccuracyStats(null, telemetryData);
 
                 // 1. 更新卡片數據
                 if (metricsData) {
