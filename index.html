@@ -80,6 +80,15 @@
             </div>
         </div>
 
+        <!-- 🪙 本週加密貨幣候選 -->
+        <div class="bg-white border rounded-lg p-4 mb-6">
+            <h2 class="text-xl font-semibold mb-2">🪙 本週加密貨幣候選</h2>
+            <p class="text-sm text-gray-500 mb-4">恐懼貪婪指數 &lt; 75 時顯示，避免極度貪婪追高</p>
+            <div id="crypto-table" class="overflow-x-auto">
+                <p class="loading text-gray-500">載入加密貨幣數據...</p>
+            </div>
+        </div>
+
         <!-- 🎯 今日 AI 狙擊分析 -->
         <div class="bg-white border rounded-lg p-4 mb-6">
             <h2 class="text-xl font-semibold mb-4">🎯 今日 AI 狙擊分析</h2>
@@ -861,6 +870,48 @@
                 document.getElementById('screener-table').innerHTML = '<p class="text-gray-500 text-center py-4">暫無篩選結果或尚未執行海選</p>';
             }
         }
+
+        // 🪙 新增載入加密貨幣候選股表格的函數
+        async function loadCrypto() {
+            try {
+                const res = await fetch('data/crypto_candidates.json');
+                if (!res.ok) throw new Error('No crypto data');
+                const data = await res.json();
+                
+                if (!data.candidates || data.candidates.length === 0) {
+                    const fngMsg = data.fear_greed_index?.value > 75 
+                        ? `本週加密貨幣市場極度貪婪（FNG=${data.fear_greed_index.value}），建議觀望。`
+                        : '暫無符合條件的加密貨幣候選。';
+                    document.getElementById('crypto-table').innerHTML = `<p class="text-gray-500 text-center py-4">${fngMsg}</p>`;
+                    return;
+                }
+
+                let html = '<table class="min-w-full divide-y divide-gray-200"><thead><tr>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">幣種</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">價格</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">7 日漲跌</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">RSI</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">外部工具</th></tr></thead><tbody>';
+
+                data.candidates.forEach(c => {
+                    const changeClass = c.change_7d >= 0 ? 'text-green-600' : 'text-red-600';
+                    html += `<tr class="hover:bg-gray-50">
+                        <td class="px-4 py-3 text-sm font-bold">${escapeHTML(c.symbol)}</td>
+                        <td class="px-4 py-3 text-sm">$${c.price.toFixed(2)}</td>
+                        <td class="px-4 py-3 text-sm ${changeClass}">${c.change_7d >= 0 ? '+' : ''}${c.change_7d.toFixed(2)}%</td>
+                        <td class="px-4 py-3 text-sm">${c.rsi}</td>
+                        <td class="px-4 py-3 text-sm">
+                            <a href="https://www.coingecko.com/en/coins/${c.coin_id}" target="_blank" class="text-blue-600 hover:underline">CoinGecko</a>
+                        </td>
+                    </tr>`;
+                });
+                html += '</tbody></table>';
+                document.getElementById('crypto-table').innerHTML = html;
+            } catch (e) {
+                console.warn('Crypto 資料載入失敗:', e);
+                document.getElementById('crypto-table').innerHTML = '<p class="text-gray-500 text-center py-4">暫無加密貨幣數據</p>';
+            }
+        }
         
         // 🟠 P1 修正：使用安全的事件監聽器綁定，避免覆寫常數變數
         document.addEventListener('DOMContentLoaded', async () => {
@@ -870,6 +921,8 @@
             }
             // 2. 載入 Screener 資料
             await loadScreener();
+            // 3. 載入加密貨幣資料
+            await loadCrypto();
         });
     </script>
 </body>
