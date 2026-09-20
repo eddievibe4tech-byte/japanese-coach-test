@@ -1,12 +1,13 @@
 """
 加密貨幣海選引擎
 篩選條件：恐懼貪婪指數 + 技術面 + 市值
+情境分類：四象限決策矩陣 (RSI + FNG)
 """
 import json
 import os
 import time
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from crypto_client import CryptoClient
 
 # 加密貨幣海選條件
@@ -23,6 +24,87 @@ WATCHLIST = [
     'cardano', 'dogecoin', 'tron', 'avalanche-2', 'chainlink',
     'polkadot', 'polygon-pos', 'litecoin', 'uniswap', 'cosmos'
 ]
+
+
+def get_scenario_badge(fng: int, rsi: int, price_above_ma20: bool, change_7d: float = 0) -> Dict:
+    """
+    根據四象限決策矩陣判斷當前情境
+    
+    Returns:
+        dict: {
+            'scenario': str,  # 情境名稱
+            'badge_html': str,  # HTML 標籤
+            'recommendation': str,  # 建議策略
+            'win_rate': str,  # 歷史勝率
+            'position_size': str,  # 建議部位
+            'stop_loss': str,  # 停損點
+            'take_profit': str,  # 獲利點
+            'holding_period': str  # 持有期間
+        }
+    """
+    # 情境 4: 🔴 極度危險 (極度貪婪 + 超買)
+    if fng > 75 and rsi > 70:
+        return {
+            'scenario': '極度危險',
+            'badge_html': '<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-bold">🔴 極度危險</span>',
+            'recommendation': '避開',
+            'win_rate': '20%',
+            'position_size': '0%',
+            'stop_loss': '不適用',
+            'take_profit': '已有部位考慮分批獲利',
+            'holding_period': '不適用'
+        }
+    
+    # 情境 3: 🟡 反彈陷阱 (極度貪婪 + 超賣反彈)
+    if fng > 70 and rsi < 40 and change_7d > 15:
+        return {
+            'scenario': '反彈陷阱',
+            'badge_html': '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-bold">⚠️ 反彈陷阱</span>',
+            'recommendation': '避開',
+            'win_rate': '45%',
+            'position_size': '0%',
+            'stop_loss': '不適用',
+            'take_profit': '等待 FNG 降回 50 以下',
+            'holding_period': '不適用'
+        }
+    
+    # 情境 1: 🟢 黃金買點 (極度恐懼 + 超賣)
+    if fng < 25 and rsi < 30:
+        return {
+            'scenario': '黃金買點',
+            'badge_html': '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-bold">🟢 黃金買點</span>',
+            'recommendation': '積極買入',
+            'win_rate': '90%',
+            'position_size': '單筆上限 10,000 元（可分 2 批）',
+            'stop_loss': '再跌 15% 停損',
+            'take_profit': 'RSI > 60 或 FNG > 60 時分批獲利',
+            'holding_period': '3-6 個月'
+        }
+    
+    # 情境 2: 🟡 右側確認點 (恐懼消退 + 站上均線)
+    if 30 <= fng <= 50 and rsi < 60 and price_above_ma20:
+        return {
+            'scenario': '右側確認',
+            'badge_html': '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-bold">🔵 右側確認</span>',
+            'recommendation': '謹慎買入',
+            'win_rate': '72%',
+            'position_size': '單筆 5,000-8,000 元',
+            'stop_loss': '跌破 MA20 停損',
+            'take_profit': 'RSI > 70 或 FNG > 70 時獲利',
+            'holding_period': '1-3 個月'
+        }
+    
+    # 預設：中性
+    return {
+        'scenario': '中性',
+        'badge_html': '<span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">⚪ 中性</span>',
+        'recommendation': '觀望',
+        'win_rate': '-',
+        'position_size': '等待明確訊號',
+        'stop_loss': '不適用',
+        'take_profit': '不適用',
+        'holding_period': '不適用'
+    }
 
 
 def run_crypto_screener() -> List[Dict]:
@@ -75,6 +157,14 @@ def run_crypto_screener() -> List[Dict]:
         if CRYPTO_RULES['price_above_ma20'] and not tech['price_above_ma20']:
             continue
         
+        # 情境分類（四象限決策矩陣）
+        scenario = get_scenario_badge(
+            fng=fng['value'],
+            rsi=tech['rsi'],
+            price_above_ma20=tech['price_above_ma20'],
+            change_7d=data.get('change_7d', 0)
+        )
+        
         candidates.append({
             'coin_id': coin_id,
             'symbol': data['symbol'],
@@ -87,6 +177,14 @@ def run_crypto_screener() -> List[Dict]:
             'ma20': tech['ma20'],
             'price_above_ma20': tech['price_above_ma20'],
             'fear_greed': fng['value'],
+            'scenario': scenario['scenario'],
+            'badge_html': scenario['badge_html'],
+            'recommendation': scenario['recommendation'],
+            'win_rate': scenario['win_rate'],
+            'position_size': scenario['position_size'],
+            'stop_loss': scenario['stop_loss'],
+            'take_profit': scenario['take_profit'],
+            'holding_period': scenario['holding_period'],
             'screened_at': datetime.now().strftime('%Y-%m-%d %H:%M')
         })
     

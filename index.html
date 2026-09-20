@@ -891,15 +891,21 @@
                 html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">價格</th>';
                 html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">7 日漲跌</th>';
                 html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">RSI</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">情境標籤</th>';
+                html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">建議</th>';
                 html += '<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">外部工具</th></tr></thead><tbody>';
 
                 data.candidates.forEach(c => {
                     const changeClass = c.change_7d >= 0 ? 'text-green-600' : 'text-red-600';
+                    // 使用後端傳來的 badge_html，如果沒有則用前端函數產生
+                    const badgeHtml = c.badge_html || getScenarioBadge(c.fear_greed, c.rsi, c.price_above_ma20);
                     html += `<tr class="hover:bg-gray-50">
                         <td class="px-4 py-3 text-sm font-bold">${escapeHTML(c.symbol)}</td>
                         <td class="px-4 py-3 text-sm">$${c.price.toFixed(2)}</td>
                         <td class="px-4 py-3 text-sm ${changeClass}">${c.change_7d >= 0 ? '+' : ''}${c.change_7d.toFixed(2)}%</td>
                         <td class="px-4 py-3 text-sm">${c.rsi}</td>
+                        <td class="px-4 py-3 text-sm">${badgeHtml}</td>
+                        <td class="px-4 py-3 text-sm">${escapeHTML(c.recommendation || '-')}</td>
                         <td class="px-4 py-3 text-sm">
                             <a href="https://www.coingecko.com/en/coins/${c.coin_id}" target="_blank" class="text-blue-600 hover:underline">CoinGecko</a>
                         </td>
@@ -910,6 +916,21 @@
             } catch (e) {
                 console.warn('Crypto 資料載入失敗:', e);
                 document.getElementById('crypto-table').innerHTML = '<p class="text-gray-500 text-center py-4">暫無加密貨幣數據</p>';
+            }
+        }
+
+        // 🟢 新增：情境標籤判斷函數（前端備用）
+        function getScenarioBadge(fng, rsi, priceAboveMa20) {
+            if (fng < 25 && rsi < 30) {
+                return '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-bold">🟢 黃金買點</span>';
+            } else if (fng >= 30 && fng <= 50 && rsi < 60 && priceAboveMa20) {
+                return '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-bold">🔵 右側確認</span>';
+            } else if (fng > 70 && rsi < 40) {
+                return '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-bold">⚠️ 反彈陷阱</span>';
+            } else if (fng > 75 && rsi > 70) {
+                return '<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-bold">🔴 極度危險</span>';
+            } else {
+                return '<span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">⚪ 中性</span>';
             }
         }
         
