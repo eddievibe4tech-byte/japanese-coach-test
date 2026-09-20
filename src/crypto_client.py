@@ -2,125 +2,173 @@
 加密貨幣數據客戶端
 使用免費 API：CoinGecko + Alternative.me Fear & Greed Index
 """
+
+import logging
+from typing import Any, Dict, List, Optional
 import requests
-import time
-from typing import Dict, List
-from datetime import datetime
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+
+logger = logging.getLogger("CryptoClient")
 
 
 class CryptoClient:
     """加密貨幣 API 客戶端（完全免費，無需 API Key）"""
-    
-    def __init__(self):
+
+    def __init__(self, timeout: int = 10):
+        self.timeout = timeout
         self.session = requests.Session()
-        self.session.headers.update({'User-Agent': 'SniperSystem/1.0'})
-    
-    def get_market_data(self, coin_ids: List[str] = None) -> Dict:
-        """
-        取得加密貨幣市場數據（價格、市值、24h 漲跌幅）
-        
-        Args:
-            coin_ids: 加密貨幣 ID 列表（CoinGecko 格式）
-            
-        Returns:
-            {coin_id: {price, market_cap, change_24h, ...}}
-        """
+        self.session.headers.update({"User-Agent": "SniperSystem/1.0"})
+
+        # 設定自動重試機制（應對暫時性網路抖動與 429 頻率限制）
+        retries = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def close(self):
+        """關閉 Session 連線"""
+        self.session.close()
+
+    def get_market_data(
+        self, coin_ids: Optional[List[str]] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        """取得加密貨幣市場數據（價格、市值、24h/7d 漲跌幅）"""
         if coin_ids is None:
-            coin_ids = ['bitcoin', 'ethereum', 'solana']
-        
-        ids_str = ','.join(coin_ids)
-        # P1-2 修正：明確要求 24h 和 7d 漲跌幅
-        url = f"https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={ids_str}&price_change_percentage=24h,7d"
-        
+            coin_ids = ["bitcoin", "ethereum", "solana"]
+
+        url = "https://api.coingecko.com/api/v3/coins/markets"
+        params = {
+            "vs_currency": "usd",
+            "ids": ",".join(coin_ids),
+            "price_change_percentage": "24h,7d",
+        }
+
         try:
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(url, params=params, timeout=self.timeout)
             response.raise_for_status()
             data = response.json()
-            
+
             result = {}
             for coin in data:
-                result[coin['id']] = {
-                    'symbol': coin['symbol'].upper(),
-                    'name': coin['name'],
-                    'price': coin['current_price'],
-                    'market_cap': coin['market_cap'],
-                    'change_24h': coin.get('price_change_percentage_24h', 0),
-                    'change_7d': coin.get('price_change_percentage_7d_in_currency', 0),
-                    'volume_24h': coin['total_volume'],
+                cid = coin.get("id")
+                if not cid:
+                    continue
+                result[cid] = {
+                    "symbol": coin.get("symbol", "").upper(),
+                    "name": coin.get("name", ""),
+                    "price": coin.get("current_price"),
+                    "market_cap": coin.get("market_cap"),
+                    "change_24h": coin.get("price_change_percentage_24h", 0.0),
+                    "change_7d": coin.get(
+                        "price_change_percentage_7d_in_currency", 0.0
+                    ),
+                    "volume_24h": coin.get("total_volume"),
                 }
             return result
         except Exception as e:
-            print(f"⚠️ CoinGecko API 失敗：{e}")
+            logger.error("CoinGecko 取得市場數據失敗：%s", e)
             return {}
-    
-    def get_fear_greed_index(self) -> Dict:
-        """
-        取得加密貨幣恐懼貪婪指數（Alternative.me 免費 API）
-        
+
+    def get_fear_greed_index(self) -> Optional[Dict[str, Any]]:
+        """取得加密貨幣恐懼貪婪指數
+
         Returns:
-            {value: 0-100, classification: "Extreme Fear"/"Fear"/"Neutral"/"Greed"/"Extreme Greed"}
+            成功回傳 dict；失敗時回傳 None，避免回傳假中性數據干擾策略。
         """
-        url = "https://api.alternative.me/fng/?limit=1"
-        
+        url = "https://api.alternative.me/fng/"
+        params = {"limit": 1}
+
         try:
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(url, params=params, timeout=self.timeout)
             response.raise_for_status()
             data = response.json()
-            
-            if data.get('data'):
-                latest = data['data'][0]
+
+            if data.get("data"):
+                latest = data["data"][0]
                 return {
-                    'value': int(latest['value']),
-                    'classification': latest['value_classification'],
-                    'timestamp': latest['timestamp']
+                    "value": int(latest["value"]),
+                    "classification": latest["value_classification"],
+                    "timestamp": int(latest["timestamp"]),
                 }
         except Exception as e:
-            print(f"⚠️ Fear & Greed API 失敗：{e}")
-        
-        return {'value': 50, 'classification': 'Neutral'}
-    
-    def get_technical_indicators(self, coin_id: str, days: int = 120) -> Dict:
-        """
-        計算技術指標（MA、RSI）— 使用 CoinGecko 歷史價格
-        
-        P1-2 修正：days >= 91 才會回傳日線數據（<91 為小時線）
-        
+            logger.error("Fear & Greed API 請求失敗：%s", e)
+
+        return None
+
+    @staticmethod
+    def _calculate_rsi(prices: List[float], period: int = 14) -> float:
+        """計算標準 Wilder's RSI (與多數交易所計算方式一致)"""
+        if len(prices) < period + 1:
+            return 50.0
+
+        deltas = [prices[i] - prices[i - 1] for i in range(1, len(prices))]
+
+        # 初始第一組平均收益與損失
+        gains = [d if d > 0 else 0.0 for d in deltas[:period]]
+        losses = [-d if d < 0 else 0.0 for d in deltas[:period]]
+
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+
+        # Wilder's 平滑更新
+        for d in deltas[period:]:
+            gain = d if d > 0 else 0.0
+            loss = -d if d < 0 else 0.0
+            avg_gain = (avg_gain * (period - 1) + gain) / period
+            avg_loss = (avg_loss * (period - 1) + loss) / period
+
+        if avg_loss == 0:
+            return 100.0 if avg_gain > 0 else 50.0
+
+        rs = avg_gain / avg_loss
+        return round(100.0 - (100.0 / (1.0 + rs)), 2)
+
+    def get_technical_indicators(
+        self, coin_id: str, days: int = 120
+    ) -> Optional[Dict[str, Any]]:
+        """計算技術指標（MA7, MA20, RSI14）
+
         Args:
-            coin_id: 加密貨幣 ID
-            days: 歷史天數（建議 >= 91 以取得日線）
-            
-        Returns:
-            {ma7, ma20, rsi, price_above_ma20}
+            coin_id: 加密貨幣 ID (CoinGecko)
+            days: 歷史天數 (建議 >= 91，以確保取得 daily 日線數據)
         """
-        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days={days}"
-        
+        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+        params = {"vs_currency": "usd", "days": days}
+
         try:
-            response = self.session.get(url, timeout=10)
+            response = self.session.get(url, params=params, timeout=self.timeout)
             response.raise_for_status()
             data = response.json()
-            
-            prices = [p[1] for p in data.get('prices', [])]
+
+            prices = [p[1] for p in data.get("prices", []) if p[1] is not None]
             if len(prices) < 20:
-                return {'ma7': 0, 'ma20': 0, 'rsi': 50, 'price_above_ma20': False}
-            
+                logger.warning(
+                    "%s 價格數據不足 20 根，無法計算技術指標", coin_id
+                )
+                return None
+
             ma7 = sum(prices[-7:]) / 7
             ma20 = sum(prices[-20:]) / 20
-            
-            # 簡化 RSI 計算
-            changes = [prices[i] - prices[i-1] for i in range(-14, 0)]
-            gains = [c for c in changes if c > 0]
-            losses = [-c for c in changes if c < 0]
-            avg_gain = sum(gains) / 14 if gains else 0
-            avg_loss = sum(losses) / 14 if losses else 0.0001
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
-            
+            rsi = self._calculate_rsi(prices, period=14)
+
             return {
-                'ma7': round(ma7, 2),
-                'ma20': round(ma20, 2),
-                'rsi': round(rsi, 2),
-                'price_above_ma20': prices[-1] > ma20
+                "ma7": round(ma7, 2),
+                "ma20": round(ma20, 2),
+                "rsi": rsi,
+                "price_above_ma20": prices[-1] > ma20,
             }
         except Exception as e:
-            print(f"⚠️ {coin_id} 技術指標計算失敗：{e}")
-            return {'ma7': 0, 'ma20': 0, 'rsi': 50, 'price_above_ma20': False}
+            logger.error("%s 技術指標計算失敗：%s", coin_id, e)
+            return None

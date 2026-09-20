@@ -4,8 +4,9 @@
 """
 import json
 import os
+import time
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 from crypto_client import CryptoClient
 
 # 加密貨幣海選條件
@@ -32,6 +33,9 @@ def run_crypto_screener() -> List[Dict]:
     
     # 1. 取得恐懼貪婪指數
     fng = client.get_fear_greed_index()
+    if fng is None:
+        print("⚠️ 無法取得恐懼貪婪指數，使用預設中性值")
+        fng = {'value': 50, 'classification': 'Neutral'}
     print(f"  恐懼貪婪指數：{fng['value']} ({fng['classification']})")
     
     # 如果極度貪婪（>75），建議觀望
@@ -51,12 +55,17 @@ def run_crypto_screener() -> List[Dict]:
     candidates = []
     for coin_id, data in market_data.items():
         # 市值篩選
-        if data['market_cap'] < CRYPTO_RULES['min_market_cap']:
+        if data.get('market_cap') is None or data['market_cap'] < CRYPTO_RULES['min_market_cap']:
             continue
         
         # 技術指標
         tech = client.get_technical_indicators(coin_id)
         time.sleep(1)  # P1-2: 避免 rate limit
+        
+        # 技術指標獲取失敗則跳過
+        if tech is None:
+            print(f"⚠️ {coin_id} 技術指標獲取失敗，跳過")
+            continue
         
         # RSI 篩選
         if tech['rsi'] > CRYPTO_RULES['rsi_max']:
@@ -91,10 +100,13 @@ def run_crypto_screener() -> List[Dict]:
     return top
 
 
-def save_crypto_results(candidates: List[Dict], fng: Dict) -> None:
+def save_crypto_results(candidates: List[Dict], fng: Optional[Dict]) -> None:
     data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
     output_path = os.path.join(data_dir, 'crypto_candidates.json')
+    
+    if fng is None:
+        fng = {'value': 50, 'classification': 'Neutral'}
     
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump({
