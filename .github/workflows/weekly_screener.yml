@@ -24,17 +24,27 @@ jobs:
       - name: Run Screener & AI Due Diligence
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          # 🟢 修法 C：使用 || 運算符相容多種可能的 Secret 名稱
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN || secrets.FINMIND_API_TOKEN || secrets.FINMIND_API_KEY }}
         run: |
           cd src
           python screener.py
-          # 🟢 P3 修正：檢查 screener 是否有產出檔案，若無則中斷 workflow
+          
+          # 🟡 修正：檢查檔案是否存在（不論是否為空）
           if [ ! -f ../data/screener_candidates.json ]; then
-            echo "❌ Screener failed to produce candidates. Aborting."
+            echo "❌ Screener failed to produce file"
             exit 1
           fi
-          python news_sentiment.py
+          
+          # 檢查候選股數量
+          CANDIDATE_COUNT=$(python -c "import json; print(len(json.load(open('../data/screener_candidates.json')).get('candidates', [])))")
+          echo "📊 候選股數量：$CANDIDATE_COUNT"
+          
+          if [ "$CANDIDATE_COUNT" -eq 0 ]; then
+            echo "⚠️ 本週無符合條件的候選股（市場環境嚴峻），跳過 AI 盡調"
+            # 不 exit 1，讓 workflow 綠燈結束
+          else
+            python news_sentiment.py
+          fi
           
       - name: Commit Candidates
         run: |

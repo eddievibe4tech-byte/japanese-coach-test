@@ -1,0 +1,46 @@
+name: Daily Crypto Analysis (每日加密貨幣分析)
+
+on:
+  schedule:
+    # 每天早上 09:00 (台北時間 = UTC+8) 執行
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  crypto-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install requests
+
+      - name: Run Crypto Screener
+        run: |
+          cd src
+          python crypto_screener.py
+          
+          # 🟡 防禦性檢查：確認檔案存在
+          if [ ! -f ../data/crypto_candidates.json ]; then
+            echo "❌ Crypto screener failed to produce file"
+            exit 1
+          fi
+          
+          # 檢查候選數量
+          CRYPTO_COUNT=$(python -c "import json; print(len(json.load(open('../data/crypto_candidates.json')).get('candidates', [])))")
+          echo "🪙 加密貨幣候選數量：$CRYPTO_COUNT"
+
+      - name: Commit Results
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/crypto_candidates.json
+          git commit -m "🪙 Daily Crypto Analysis: $(date +'%Y-%m-%d')" || echo "No changes"
+          git push
