@@ -26,16 +26,16 @@ WATCHLIST = [
 ]
 
 
-def get_scenario_badge(fng: int, rsi: int, price_above_ma20: bool, change_7d: float = 0) -> Dict:
+def get_scenario_badge(fng: int, rsi: float, price_above_ma20: bool, change_7d: float = 0) -> Dict:
     """
     根據四象限決策矩陣判斷當前情境
     
     Returns:
         dict: {
             'scenario': str,  # 情境名稱
-            'badge_html': str,  # HTML 標籤
             'recommendation': str,  # 建議策略
             'win_rate': str,  # 歷史勝率
+            'win_rate_note': str,  # 勝率備註
             'position_size': str,  # 建議部位
             'stop_loss': str,  # 停損點
             'take_profit': str,  # 獲利點
@@ -46,9 +46,9 @@ def get_scenario_badge(fng: int, rsi: int, price_above_ma20: bool, change_7d: fl
     if fng > 75 and rsi > 70:
         return {
             'scenario': '極度危險',
-            'badge_html': '<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-bold">🔴 極度危險</span>',
             'recommendation': '避開',
             'win_rate': '20%',
+            'win_rate_note': '歷史統計：BTC 日線、1 年期；山寨幣僅供參考',
             'position_size': '0%',
             'stop_loss': '不適用',
             'take_profit': '已有部位考慮分批獲利',
@@ -59,9 +59,9 @@ def get_scenario_badge(fng: int, rsi: int, price_above_ma20: bool, change_7d: fl
     if fng > 70 and rsi < 40 and change_7d > 15:
         return {
             'scenario': '反彈陷阱',
-            'badge_html': '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-bold">⚠️ 反彈陷阱</span>',
             'recommendation': '避開',
             'win_rate': '45%',
+            'win_rate_note': '歷史統計：BTC 日線、1 年期；山寨幣僅供參考',
             'position_size': '0%',
             'stop_loss': '不適用',
             'take_profit': '等待 FNG 降回 50 以下',
@@ -72,10 +72,10 @@ def get_scenario_badge(fng: int, rsi: int, price_above_ma20: bool, change_7d: fl
     if fng < 25 and rsi < 30:
         return {
             'scenario': '黃金買點',
-            'badge_html': '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-bold">🟢 黃金買點</span>',
             'recommendation': '積極買入',
             'win_rate': '90%',
-            'position_size': '單筆上限 10,000 元（可分 2 批）',
+            'win_rate_note': '歷史統計：BTC 日線、1 年期；山寨幣僅供參考',
+            'position_size': '≤ 加密貨幣預算 50%（分 2 批，單批 ≤ 5,000 元）',
             'stop_loss': '再跌 15% 停損',
             'take_profit': 'RSI > 60 或 FNG > 60 時分批獲利',
             'holding_period': '3-6 個月'
@@ -85,9 +85,9 @@ def get_scenario_badge(fng: int, rsi: int, price_above_ma20: bool, change_7d: fl
     if 30 <= fng <= 50 and rsi < 60 and price_above_ma20:
         return {
             'scenario': '右側確認',
-            'badge_html': '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-bold">🔵 右側確認</span>',
             'recommendation': '謹慎買入',
             'win_rate': '72%',
+            'win_rate_note': '歷史統計：BTC 日線、1 年期；山寨幣僅供參考',
             'position_size': '單筆 5,000-8,000 元',
             'stop_loss': '跌破 MA20 停損',
             'take_profit': 'RSI > 70 或 FNG > 70 時獲利',
@@ -97,9 +97,9 @@ def get_scenario_badge(fng: int, rsi: int, price_above_ma20: bool, change_7d: fl
     # 預設：中性
     return {
         'scenario': '中性',
-        'badge_html': '<span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">⚪ 中性</span>',
         'recommendation': '觀望',
         'win_rate': '-',
+        'win_rate_note': '',
         'position_size': '等待明確訊號',
         'stop_loss': '不適用',
         'take_profit': '不適用',
@@ -120,10 +120,21 @@ def run_crypto_screener() -> List[Dict]:
         fng = {'value': 50, 'classification': 'Neutral'}
     print(f"  恐懼貪婪指數：{fng['value']} ({fng['classification']})")
     
-    # 如果極度貪婪（>75），建議觀望
+    # 🆕 永遠先算 BTC 基準指標（供市場層級情境使用）
+    btc_tech = client.get_technical_indicators('bitcoin') or {'rsi': 50.0, 'price_above_ma20': False}
+    btc_data = (client.get_market_data(['bitcoin']).get('bitcoin') or {})
+    btc_chg = btc_data.get('change_7d', 0)
+    
+    # P0-2 修正：如果極度貪婪（>75），輸出市場層級情境並建議觀望
     if fng['value'] > CRYPTO_RULES['fear_greed_max']:
+        market_scenario = get_scenario_badge(
+            fng=fng['value'],
+            rsi=btc_tech['rsi'],
+            price_above_ma20=btc_tech['price_above_ma20'],
+            change_7d=btc_chg
+        )
         print(f"⚠️ 市場極度貪婪（{fng['value']}），建議觀望")
-        save_crypto_results([], fng)
+        save_crypto_results([], fng, market_scenario=market_scenario)
         return []
     
     # 2. 取得市場數據
@@ -149,21 +160,23 @@ def run_crypto_screener() -> List[Dict]:
             print(f"⚠️ {coin_id} 技術指標獲取失敗，跳過")
             continue
         
-        # RSI 篩選
-        if tech['rsi'] > CRYPTO_RULES['rsi_max']:
-            continue
-        
-        # MA20 篩選
-        if CRYPTO_RULES['price_above_ma20'] and not tech['price_above_ma20']:
-            continue
-        
-        # 情境分類（四象限決策矩陣）
+        # 🔴 P0-1 修正：先分類情境，再依情境決定篩選規則
         scenario = get_scenario_badge(
             fng=fng['value'],
             rsi=tech['rsi'],
             price_above_ma20=tech['price_above_ma20'],
             change_7d=data.get('change_7d', 0)
         )
+        
+        # 依情境決定篩選：黃金買點是左側機會，豁免 MA20/RSI 上限過濾
+        if scenario['scenario'] == '極度危險':
+            continue  # 或收集到 warnings 清單供前端顯示
+        if scenario['scenario'] != '黃金買點':
+            if tech['rsi'] > CRYPTO_RULES['rsi_max']:
+                continue
+            if CRYPTO_RULES['price_above_ma20'] and not tech['price_above_ma20']:
+                continue
+        # 黃金買點仍要求市值與流動性門檻（已在上方檢查）
         
         candidates.append({
             'coin_id': coin_id,
@@ -198,7 +211,7 @@ def run_crypto_screener() -> List[Dict]:
     return top
 
 
-def save_crypto_results(candidates: List[Dict], fng: Optional[Dict]) -> None:
+def save_crypto_results(candidates: List[Dict], fng: Optional[Dict], market_scenario: Optional[Dict] = None) -> None:
     data_dir = os.path.join(os.path.dirname(__file__), '..', 'data')
     os.makedirs(data_dir, exist_ok=True)
     output_path = os.path.join(data_dir, 'crypto_candidates.json')
@@ -210,6 +223,7 @@ def save_crypto_results(candidates: List[Dict], fng: Optional[Dict]) -> None:
         json.dump({
             "candidates": candidates,
             "fear_greed_index": fng,
+            "market_scenario": market_scenario,  # 🆕 P0-2: 市場層級情境
             "updated_at": datetime.now().isoformat(),
             "rules_applied": CRYPTO_RULES
         }, f, ensure_ascii=False, indent=2)

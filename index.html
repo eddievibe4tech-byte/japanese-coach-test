@@ -880,11 +880,19 @@
                 if (!res.ok) throw new Error('No crypto data');
                 const data = await res.json();
                 
+                // P0-2 修正：如果沒有候選，顯示市場層級情境
                 if (!data.candidates || data.candidates.length === 0) {
-                    const fngMsg = data.fear_greed_index?.value > 75 
-                        ? `本週加密貨幣市場極度貪婪（FNG=${data.fear_greed_index.value}），建議觀望。`
-                        : '暫無符合條件的加密貨幣候選。';
-                    document.getElementById('crypto-table').innerHTML = `<p class="text-gray-500 text-center py-4">${fngMsg}</p>`;
+                    const ms = data.market_scenario;
+                    let msg;
+                    if (ms) {
+                        // 有 market_scenario 時顯示完整策略
+                        msg = `市場情境：<span class="font-bold">${escapeHTML(ms.scenario)}</span> — ${escapeHTML(ms.recommendation)}；${escapeHTML(ms.take_profit || '不適用')}`;
+                    } else if (data.fear_greed_index?.value > 75) {
+                        msg = `本週加密貨幣市場極度貪婪（FNG=${data.fear_greed_index.value}），建議觀望。`;
+                    } else {
+                        msg = '暫無符合條件的加密貨幣候選。';
+                    }
+                    document.getElementById('crypto-table').innerHTML = `<p class="text-gray-500 text-center py-4">${msg}</p>`;
                     return;
                 }
 
@@ -899,8 +907,8 @@
 
                 data.candidates.forEach(c => {
                     const changeClass = c.change_7d >= 0 ? 'text-green-600' : 'text-red-600';
-                    // 使用後端傳來的 badge_html，如果沒有則用前端函數產生
-                    const badgeHtml = c.badge_html || getScenarioBadge(c.fear_greed, c.rsi, c.price_above_ma20);
+                    // P1-1 修正：前端統一使用 renderScenarioBadge 產生樣式標籤
+                    const badgeHtml = renderScenarioBadge(c.scenario);
                     html += `<tr class="hover:bg-gray-50">
                         <td class="px-4 py-3 text-sm font-bold">${escapeHTML(c.symbol)}</td>
                         <td class="px-4 py-3 text-sm">$${c.price.toFixed(2)}</td>
@@ -921,19 +929,23 @@
             }
         }
 
-        // 🟢 新增：情境標籤判斷函數（前端備用）
-        function getScenarioBadge(fng, rsi, priceAboveMa20) {
-            if (fng < 25 && rsi < 30) {
-                return '<span class="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-bold">🟢 黃金買點</span>';
-            } else if (fng >= 30 && fng <= 50 && rsi < 60 && priceAboveMa20) {
-                return '<span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-bold">🔵 右側確認</span>';
-            } else if (fng > 70 && rsi < 40) {
-                return '<span class="px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-bold">⚠️ 反彈陷阱</span>';
-            } else if (fng > 75 && rsi > 70) {
-                return '<span class="px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-bold">🔴 極度危險</span>';
-            } else {
-                return '<span class="px-2 py-1 bg-gray-100 text-gray-800 rounded text-xs">⚪ 中性</span>';
-            }
+        // 🟢 P1-1 修正：統一情境標籤樣式映射（避免前後端邏輯漂移）
+        function renderScenarioBadge(scenario) {
+            const styles = {
+                '黃金買點': 'bg-green-100 text-green-800',
+                '右側確認': 'bg-blue-100 text-blue-800',
+                '反彈陷阱': 'bg-yellow-100 text-yellow-800',
+                '極度危險': 'bg-red-100 text-red-800',
+            };
+            const cls = styles[scenario] || 'bg-gray-100 text-gray-800';
+            const emoji = {
+                '黃金買點': '🟢',
+                '右側確認': '🔵',
+                '反彈陷阱': '⚠️',
+                '極度危險': '🔴',
+            };
+            const emojiChar = emoji[scenario] || '⚪';
+            return `<span class="px-2 py-1 ${cls} rounded text-xs font-bold">${emojiChar} ${escapeHTML(scenario || '中性')}</span>`;
         }
         
         // 🟠 P1 修正：使用安全的事件監聽器綁定，避免覆寫常數變數
