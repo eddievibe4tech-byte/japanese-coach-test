@@ -7,7 +7,7 @@ import json
 import os
 import time
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from crypto_client import CryptoClient
 
 # 加密貨幣海選條件
@@ -191,9 +191,9 @@ def run_crypto_screener() -> List[Dict]:
             'price_above_ma20': tech['price_above_ma20'],
             'fear_greed': fng['value'],
             'scenario': scenario['scenario'],
-            'badge_html': scenario['badge_html'],
             'recommendation': scenario['recommendation'],
             'win_rate': scenario['win_rate'],
+            'win_rate_note': scenario['win_rate_note'],
             'position_size': scenario['position_size'],
             'stop_loss': scenario['stop_loss'],
             'take_profit': scenario['take_profit'],
