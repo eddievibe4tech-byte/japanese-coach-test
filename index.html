@@ -288,9 +288,9 @@
                     renderAnalysisTable(deep.all_results);
                     
                     // 計算準確率統計
-                    calculateAccuracyStats(null, telemetryRes);
+                    calculateAccuracyStats(metricsData, telemetryData);
                 } else {
-                    document.getElementById('analysis-table').innerHTML = '<tr><td colspan="8" class="px-4 py-4 text-center text-gray-500">暫無分析數據</td></tr>';
+                    document.getElementById('analysis-table').innerHTML = '<tr><td colspan="9" class="px-4 py-4 text-center text-gray-500">暫無分析數據</td></tr>';
                 }
 
                 // 🟢 P0 Patch 2: 頂部卡 fallback - 讀不到 metrics 就用 telemetry 現算
@@ -530,7 +530,7 @@
             const tableBody = document.getElementById('analysis-table');
             
             if (!data || data.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="8" class="px-4 py-4 text-center text-gray-500">無數據</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="9" class="px-4 py-4 text-center text-gray-500">無數據</td></tr>';
                 return;
             }
 
